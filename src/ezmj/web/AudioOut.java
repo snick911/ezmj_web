@@ -17,10 +17,12 @@ final class AudioOut {
         return context;
     }
 
-    /** 第一次操作時呼叫。 */
+    /** 每次操作都呼叫。第一次建立，之後如果被瀏覽器或手機系統停掉就接回來。 */
     static void unlock() {
-        context = create();
-        if (context != null) {
+        if (context == null) {
+            context = create();
+        }
+        if (context != null && AudioContext.STATE_SUSPENDED.equals(context.getState())) {
             context.resume();
         }
     }

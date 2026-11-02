@@ -34,10 +34,12 @@
       return;
     }
     const r = canvas.getBoundingClientRect();
-    const y = r.bottom - 40;
-    for (let x = r.right - 4; x > r.left; x -= 8) {
-      for (const type of ['mousemove', 'mousedown']) {
-        canvas.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+    // 手機的牌比較矮，靠近底部才點得到
+    for (const y of [r.bottom - 22, r.bottom - 40]) {
+      for (let x = r.right - 4; x > r.left; x -= 8) {
+        for (const type of ['mousemove', 'mousedown']) {
+          canvas.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+        }
       }
     }
   }

@@ -23,7 +23,8 @@ import ezmj.model.Tile;
 final class TablePresenter {
 
     private static final int SELF_SEAT = 0;
-    private static final String TURN_HINT = "輪到你了：點一張手牌打出";
+    private static final String TURN_HINT = Browser.isTouchDevice()
+            ? "輪到你了：點牌抬起，再點一次打出" : "輪到你了：點一張手牌打出";
     private static final int MAX_LISTEN_BUTTONS = 4;
     private static final int MAX_LISTED_WAITS = 3;
 

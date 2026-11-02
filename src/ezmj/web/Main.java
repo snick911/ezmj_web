@@ -36,7 +36,7 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
         SoundEffects.setVolume(settings.soundVolume);
         BackgroundMusic.setVolume(settings.musicVolume);
         VoiceLines.setVolume(settings.voiceVolume);
-        Browser.onFirstGesture(() -> {
+        Browser.onGesture(() -> {
             AudioOut.unlock();
             BackgroundMusic.select(settings.music);
         });

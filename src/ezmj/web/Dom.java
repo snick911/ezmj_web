@@ -1,5 +1,6 @@
 package ezmj.web;
 
+import org.teavm.jso.JSBody;
 import org.teavm.jso.dom.html.HTMLButtonElement;
 import org.teavm.jso.dom.html.HTMLDocument;
 import org.teavm.jso.dom.html.HTMLElement;
@@ -47,6 +48,9 @@ final class Dom {
     static void visible(HTMLElement element, boolean visible) {
         element.getStyle().setProperty("display", visible ? "" : "none");
     }
+
+    @JSBody(params = "element", script = "element.focus({preventScroll: true});")
+    static native void focusWithoutScroll(HTMLElement element);
 
     /** 從畫面上拿掉，沒有放上去也沒關係。 */
     static void remove(HTMLElement element) {

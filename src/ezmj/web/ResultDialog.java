@@ -51,7 +51,8 @@ final class ResultDialog extends Dialog {
     @Override
     void show() {
         super.show();
-        next.focus();
+        // 手機放不下整個視窗時，一般的 focus 會捲到按鈕那裡，反而看不到最上面的結果
+        Dom.focusWithoutScroll(next);
     }
 
     @Override

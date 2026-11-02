@@ -29,17 +29,31 @@ final class TablePanel {
     /** 每家一列，欄位依序是門風、玩家、籌碼。 */
     private final HTMLElement[][] scoreCells = new HTMLElement[4][];
     private final HTMLElement logArea = Dom.el("div", "log");
+    private final HTMLElement sidebar = Dom.el("div", "sidebar");
+    private final HTMLElement shade = Dom.el("div", "drawer-shade");
 
     TablePanel(Consumer<Tile> onDiscard, Runnable onLeave, Runnable onShowHistory, Runnable onSettings, Runnable onHelp) {
         canvas = new TableCanvas(onDiscard);
         HTMLElement main = Dom.el("div", "table-main");
         main.appendChild(canvas.element());
         HTMLElement actionBar = Dom.el("div", "action-bar");
+        HTMLElement menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
+        menu.setClassName("btn menu-button");
+        actionBar.appendChild(menu);
         actionBar.appendChild(hint);
         actionBar.appendChild(actionButtons);
         main.appendChild(actionBar);
         root.appendChild(main);
-        root.appendChild(buildSidebar(onLeave, onShowHistory, onSettings, onHelp));
+        shade.addEventListener("click", event -> showDrawer(false));
+        root.appendChild(shade);
+        buildSidebar(onLeave, onShowHistory, onSettings, onHelp);
+        root.appendChild(sidebar);
+    }
+
+    /** 手機放不下側欄，要按選單才滑出來。 */
+    private void showDrawer(boolean open) {
+        sidebar.setClassName(open ? "sidebar open" : "sidebar");
+        shade.setClassName(open ? "drawer-shade open" : "drawer-shade");
     }
 
     HTMLElement element() {
@@ -56,8 +70,11 @@ final class TablePanel {
         roomInfo.setInnerText("房號 " + code);
     }
 
-    private HTMLElement buildSidebar(Runnable onLeave, Runnable onShowHistory, Runnable onSettings, Runnable onHelp) {
-        HTMLElement side = Dom.el("div", "sidebar");
+    private void buildSidebar(Runnable onLeave, Runnable onShowHistory, Runnable onSettings, Runnable onHelp) {
+        HTMLElement side = sidebar;
+        HTMLElement close = Dom.button("關閉選單", Theme.BUTTON, () -> showDrawer(false));
+        close.setClassName("btn menu-close");
+        side.appendChild(close);
         side.appendChild(roundInfo);
         side.appendChild(stakesInfo);
         side.appendChild(buildScoreTable());
@@ -69,7 +86,6 @@ final class TablePanel {
         row.appendChild(Dom.button("說明", Theme.PANEL_LIGHT, onHelp));
         side.appendChild(row);
         side.appendChild(Dom.button("離開牌局", Theme.PANEL_LIGHT, onLeave));
-        return side;
     }
 
     private HTMLElement buildScoreTable() {

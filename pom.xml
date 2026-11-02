@@ -6,7 +6,7 @@
 
   <groupId>ezmj</groupId>
   <artifactId>ezmj-web</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <packaging>jar</packaging>
   <name>EZMJ Web</name>
 

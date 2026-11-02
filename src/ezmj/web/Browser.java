@@ -57,12 +57,20 @@ final class Browser {
             + " if (!document.hidden) { action(); } });")
     static native void onVisible(Callback action);
 
-    /** 瀏覽器要等使用者碰過畫面才准出聲，這裡等第一次操作。 */
-    @JSBody(params = "action", script = "var fired = false;"
-            + "var once = function () { if (!fired) { fired = true; action(); } };"
-            + "document.addEventListener('pointerdown', once, true);"
-            + "document.addEventListener('keydown', once, true);")
-    static native void onFirstGesture(Callback action);
+    /**
+     * 瀏覽器要等使用者操作才准出聲。手指要到放開才算數，手機切到背景回來聲音也可能被停掉，
+     * 所以每次操作都通知，不是只有第一次。
+     */
+    @JSBody(params = "action", script = "['touchend', 'mousedown', 'keydown'].forEach(function (type) {"
+            + " document.addEventListener(type, function () { action(); }, true); });")
+    static native void onGesture(Callback action);
+
+    /** 手機版面，條件要和 style.css 一樣。 */
+    @JSBody(script = "return window.matchMedia('(max-width: 900px), (max-height: 560px)').matches;")
+    static native boolean isCompact();
+
+    @JSBody(script = "return 'ontouchstart' in window;")
+    static native boolean isTouchDevice();
 
     /** 嵌入的字型載入好時通知，牌面要重畫。 */
     @JSBody(params = "action", script = "if (document.fonts) {"

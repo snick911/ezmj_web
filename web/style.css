@@ -13,9 +13,15 @@
 
 * { box-sizing: border-box; }
 
-html, body, #app {
+html, body {
   height: 100%;
   margin: 0;
+}
+
+/* 手機的網址列會伸縮，dvh 才是真正看得到的高度，舊瀏覽器退回 100%。 */
+#app {
+  height: 100%;
+  height: 100dvh;
 }
 
 body {
@@ -23,6 +29,10 @@ body {
   color: var(--text);
   font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans CJK TC", "Noto Sans TC", sans-serif;
   overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* 牌面只用得到這些字，系統沒有楷書時才會下載。 */
@@ -146,7 +156,17 @@ h1, h2, h3, p { margin: 0; }
 .table-screen { display: flex; height: 100%; }
 .table-main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .table-canvas { flex: 1; min-height: 0; position: relative; }
-.table-canvas canvas { display: block; height: 100%; inset: 0; position: absolute; width: 100%; }
+.table-canvas canvas {
+  display: block;
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  width: 100%;
+}
+.menu-button, .menu-close, .drawer-shade { display: none; }
 .action-bar {
   background: var(--panel);
   display: flex;
@@ -203,3 +223,88 @@ h1, h2, h3, p { margin: 0; }
 .score-entry { border-bottom: 1px solid var(--panel-light); display: flex; flex-direction: column; gap: .3rem; padding: .35rem 0 .6rem; }
 .score-head { display: flex; flex-wrap: wrap; gap: .75rem; }
 ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
+
+/* 手機版面。條件要和 Browser.isCompact 一樣。側欄放不下，改成按選單才滑出來。 */
+@media (max-width: 900px), (max-height: 560px) {
+  :root { font-size: calc(14px * var(--font-scale)); }
+
+  .btn { min-height: 2.7rem; padding: .35rem .8rem; }
+  .card {
+    gap: .5rem;
+    max-height: calc(100vh - 1rem);
+    max-height: calc(100dvh - 1rem);
+    max-width: calc(100vw - 1rem);
+    padding: .7rem .8rem;
+  }
+  .title { font-size: 1.45rem; }
+  .headline { font-size: 1.2rem; }
+  .form-screen { padding: .5rem; }
+  .form-columns { gap: .75rem 1.5rem; }
+  .form-column { flex-basis: 14rem; }
+  /* iOS 碰到小於 16px 的輸入框會自動放大畫面 */
+  .field { font-size: 16px; }
+  .room-heading { flex-wrap: wrap; gap: .5rem; }
+
+  .sidebar {
+    bottom: 0;
+    overflow-y: auto;
+    position: fixed;
+    right: 0;
+    top: 0;
+    transform: translateX(100%);
+    transition: transform .18s ease-out;
+    width: min(19rem, 85vw);
+    z-index: 5;
+  }
+  .sidebar.open { transform: none; }
+  .log { flex: 1 0 6rem; }
+  .menu-button, .menu-close { display: block; }
+  .drawer-shade.open {
+    background: rgba(0, 0, 0, .45);
+    display: block;
+    inset: 0;
+    position: fixed;
+    z-index: 4;
+  }
+
+  /* 直向：動作列在牌桌下面 */
+  .action-bar { min-height: 4.6rem; padding: .3rem .4rem .4rem; position: relative; }
+  .menu-button { position: absolute; right: .4rem; top: .3rem; }
+  .hint { min-height: 2.7rem; padding: 0 4.6rem; }
+  .action-buttons { gap: .4rem; }
+
+  /* 視窗 */
+  .floating { left: .5rem; right: .5rem; top: .5rem; transform: none; }
+  .help-card, .result-card { width: auto; }
+  /* 歷程的欄位多，視窗不超過螢幕，表格自己左右捲動 */
+  .history-card { margin: 0 auto; width: fit-content; }
+  .help-card { height: calc(100vh - 1rem); height: calc(100dvh - 1rem); }
+  .history-scroll { overflow: auto; }
+  .backdrop .result-card { width: 100%; }
+  /* 視窗要捲動時，下一局的按鈕固定在底部，不用捲也按得到 */
+  .result-card > .btn { align-self: stretch; bottom: 0; flex: 0 0 auto; position: sticky; }
+  .result-tables { gap: .5rem; }
+  .result-tables .grid { width: 100%; }
+  .grid th, .grid td { padding: .25rem .35rem; }
+  .other-hands { grid-template-columns: minmax(0, 1fr); }
+  /* 一排牌比螢幕寬時等比例縮小。尺寸寫在元素上，所以要 important */
+  .tile-strip { height: auto !important; max-width: 100%; min-width: 0; }
+  .tile-line { flex-wrap: wrap; }
+}
+
+/* 橫向：高度最缺，動作列移到右邊，牌桌才有完整的高度 */
+@media (max-height: 560px) and (orientation: landscape) {
+  .table-main { flex-direction: row; }
+  .action-bar {
+    flex: 0 0 7.4rem;
+    justify-content: flex-start;
+    min-height: 0;
+    overflow-y: auto;
+    position: static;
+    width: 7.4rem;
+  }
+  .menu-button { flex: 0 0 auto; position: static; width: 100%; }
+  .hint { font-size: .8rem; min-height: 0; padding: 0; text-align: left; }
+  .action-buttons { align-items: stretch; flex-direction: column; flex-wrap: nowrap; }
+  .action-buttons .btn { flex: 0 0 auto; }
+}

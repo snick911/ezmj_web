@@ -54,6 +54,10 @@ final class TableCanvas {
     private static final double MIN_ROW_SLOTS = 18;
     private static final double MAX_TABLE_SCALE = 1.25;
     private static final int DISCARD_ROWS_TO_FIT = 3;
+    /** 一局打到底每家大約打出這麼多張，手機的短邊排不下三排時，要讓每排多放幾張才放得下。 */
+    private static final int DISCARDS_TO_FIT = 24;
+    /** 手機的高倍率螢幕整桌重畫很吃力，超過這個倍率肉眼也看不太出差別。 */
+    private static final double MAX_PIXEL_RATIO = 2;
 
     private record Point(double x, double y) {
     }
@@ -119,6 +123,12 @@ final class TableCanvas {
     private Tile picked;
     private Consumer<Tile> onPick;
     private int hover = -1;
+    /** 這次點擊是手指點的，瀏覽器接著會送滑鼠事件。 */
+    private boolean touched;
+    /** 手指點下去之前抬起來的是哪一張。 */
+    private int raisedBeforeTouch = -1;
+    /** 手機版面：牌桌上沒有計分板，籌碼要標在名字旁邊。 */
+    private boolean compact;
     private double frameNow;
     private double dealStart;
     private boolean repaintRequested;
@@ -134,11 +144,22 @@ final class TableCanvas {
             hover = -1;
             requestFrame();
         });
+        canvas.addEventListener("touchstart", event -> {
+            touched = true;
+            raisedBeforeTouch = hover;
+        });
         canvas.addEventListener("mousedown", event -> {
+            boolean touch = touched;
+            touched = false;
             updateHover((MouseEvent) event);
-            if (hover >= 0 && hover < hits.size()) {
-                (pickable != null ? onPick : this.onDiscard).accept(hits.get(hover).tile());
+            if (hover < 0 || hover >= hits.size()) {
+                return;
             }
+            // 手機上牌很小，點一下只抬起來，再點一次同一張才打出，免得打錯。選牌時能點的牌不多，一次就好
+            if (touch && pickable == null && hover != raisedBeforeTouch) {
+                return;
+            }
+            (pickable != null ? onPick : this.onDiscard).accept(hits.get(hover).tile());
         });
     }
 
@@ -286,11 +307,13 @@ final class TableCanvas {
     }
 
     private static double pixelRatio() {
-        return Math.max(1, Window.current().getDevicePixelRatio());
+        return Math.min(MAX_PIXEL_RATIO, Math.max(1, Window.current().getDevicePixelRatio()));
     }
 
+    /** 大視窗和 Swing 版一樣以 720 為基準；手機照比例縮會小到看不清楚，所以小螢幕的基準也跟著變小。 */
     private double unit() {
-        return Math.min(width, height) / 720.0;
+        double shortSide = Math.min(width, height);
+        return Math.max(shortSide / 720.0, Math.min(shortSide / 480.0, .8));
     }
 
     /** 中央方框與棄牌區跟著牌放大，但至少要留得下三排棄牌，不能撞到自己的手牌。 */
@@ -356,13 +379,34 @@ final class TableCanvas {
         return new Point(x * Math.cos(angle) - y * Math.sin(angle), x * Math.sin(angle) + y * Math.cos(angle));
     }
 
-    /** 第 index 張棄牌的中心點，該家視角。 */
-    private Point discardCenter(int index) {
+    /**
+     * 這家的棄牌每排幾張。一般都是 8 張；手機橫向時上下兩家、直向時左右兩家的深度只排得下一兩排，
+     * 就讓每排多放幾張，起點不變，只往該家的右手邊延伸，第一張才不會離中央很遠。
+     * 另一個方向的兩家維持 8 張，彼此才不會撞在一起。
+     */
+    private int discardColumns(int seat) {
+        double unit = tableUnit();
+        double rowDepth = seat == 0 ? humanRowDepth() : botRowDepth();
+        double room = halfDepth(seat) - rowDepth - DISCARD_TOP * unit;
+        int rows = Math.max(1, (int) (room / (DISCARD_H * unit)));
+        if (rows >= DISCARD_ROWS_TO_FIT) {
+            return DISCARD_COLUMNS;
+        }
+        double tileW = DISCARD_W * unit;
+        double halfLength = (seat % 2 == 0 ? width : height) / 2.0;
+        double nearestRow = Math.max(humanRowDepth(), botRowDepth()) + (FLOWER_H + 6) * unit;
+        int fits = (int) ((halfLength - nearestRow + tileW * DISCARD_COLUMNS / 2) / tileW);
+        return Math.max(DISCARD_COLUMNS, Math.min((DISCARDS_TO_FIT + rows - 1) / rows, fits));
+    }
+
+    /** 這家第 index 張棄牌的中心點，該家視角。 */
+    private Point discardCenter(int seat, int index) {
         double unit = tableUnit();
         double w = DISCARD_W * unit;
         double h = DISCARD_H * unit;
-        return new Point(-w * DISCARD_COLUMNS / 2 + (index % DISCARD_COLUMNS) * w + w / 2,
-                DISCARD_TOP * unit + (index / DISCARD_COLUMNS) * h + h / 2);
+        int columns = discardColumns(seat);
+        return new Point(-w * DISCARD_COLUMNS / 2 + (index % columns) * w + w / 2,
+                DISCARD_TOP * unit + (index / columns) * h + h / 2);
     }
 
     /** 打出的牌從手牌飛到棄牌區。真人從點的那張牌起飛，電腦從手牌中間起飛。 */
@@ -380,7 +424,7 @@ final class TableCanvas {
             }
         }
         int index = round.player(seat).discards().size() - 1;
-        Point to = discardCenter(index);
+        Point to = discardCenter(seat, index);
         Point from = toTable(seat, fromX, fromY);
         Point target = toTable(seat, to.x(), to.y());
         double w = (DISCARD_W - 1) * tableUnit();
@@ -402,7 +446,7 @@ final class TableCanvas {
             meldX += earlier.tiles().size() * row.step() + row.gap();
         }
 
-        Point slot = discardCenter(round.player(event.from()).discards().size());
+        Point slot = discardCenter(event.from(), round.player(event.from()).discards().size());
         Point from = toTable(event.from(), slot.x(), slot.y());
         Point to = toTable(seat, meldX + tileIndex * row.step() + row.tileW() / 2, row.y() + row.tileH() / 2);
         double turn = Math.IEEEremainder(seatAngle(seat) - seatAngle(event.from()), Math.PI * 2);
@@ -520,6 +564,7 @@ final class TableCanvas {
         if (isEmpty()) {
             return;
         }
+        compact = Browser.isCompact();
         double ratio = pixelRatio();
         Gfx g = new Gfx(context, ratio);
         paintFelt(g);
@@ -655,7 +700,7 @@ final class TableCanvas {
 
         String wind = Tile.windName(round.seatWind(seat));
         String dealerMark = round.dealer() == seat ? "莊 " : "";
-        String text = dealerMark + wind + "  " + player.name();
+        String text = dealerMark + wind + "  " + player.name() + (compact ? "  " + player.chips() : "");
         g.font(Theme.font(true, 14 * unit));
         g.color(active ? "#000000" : Theme.TEXT);
         // 字體調大時，長名字要縮回方框內
@@ -670,6 +715,7 @@ final class TableCanvas {
     private void paintDiscards(Gfx g, int seat, Player player, double unit) {
         double tileW = DISCARD_W * unit;
         double tileH = DISCARD_H * unit;
+        int columns = discardColumns(seat);
         double startX = -tileW * DISCARD_COLUMNS / 2;
         double startY = DISCARD_TOP * unit;
         List<Tile> discards = player.discards();
@@ -678,8 +724,8 @@ final class TableCanvas {
             if (lastHidden && i == discards.size() - 1) {
                 break;
             }
-            double x = startX + (i % DISCARD_COLUMNS) * tileW;
-            double y = startY + (i / DISCARD_COLUMNS) * tileH;
+            double x = startX + (i % columns) * tileW;
+            double y = startY + (i / columns) * tileH;
             TilePainter.paintFace(g, discards.get(i), x, y, tileW - 1, tileH - 1);
             boolean justDiscarded = round.phase() == Round.Phase.CLAIMS && !round.isRobbing()
                     && round.discarder() == seat && i == discards.size() - 1;
