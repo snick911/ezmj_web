@@ -98,7 +98,12 @@ token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束�
 
 ## 部署
 
-上傳 `dist\ezmj-web-<版號>\` 的內容到靜態網站（Render 靜態網站或 GitHub Pages）。不要放進 `ezmjService`：每次部署服務器都會中斷進行中的牌局，閒置時也會讓玩家對著空白頁等。服務器沒有檢查 Origin，網頁不必和服務器同源。
+網址是 <https://snick911.github.io/ezmj_web/>。push 到 `main` 就由 `.github/workflows/pages.yml` 建置、跑測試並部署到 GitHub Pages，失敗的話舊版本繼續運作。repo 的 Settings → Pages → Source 要選 GitHub Actions。
+
+- 引擎固定在 workflow 的 `EZMJ_COMMIT`，更新 `ezmj` 不會觸發部署。要換引擎就改這個值再 push，新的 commit 要先 push 到 GitHub。
+- 部署網頁不會中斷牌局，服務器不受影響。玩家的瀏覽器如果還開著舊版，服務器改協定時會提示重新整理。
+
+不要放進 `ezmjService`：每次部署服務器都會中斷進行中的牌局，閒置時也會讓玩家對著空白頁等。服務器沒有檢查 Origin，網頁不必和服務器同源。
 
 靜態檔的網址帶著版號，改版後瀏覽器會拿到新的。`index.html` 本身要設定成不快取或很短的快取。
 

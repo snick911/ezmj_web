@@ -1,0 +1,54 @@
+# push 到 main 就建置並部署到 GitHub Pages。網頁和服務器分開部署，這裡不會影響進行中的牌局。
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # 牌與局面翻譯直接編譯 ezmj 的原始碼，固定在這個 commit，更新 ezmj 不會改到網頁。
+  # 要跟上新版就改這個值，並更新 README 記的「對應的畫面」。
+  EZMJ_COMMIT: d57eb11b1dcd2033bca8eba9a934c447be0e89ec
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: snick911/ezmj
+          ref: ${{ env.EZMJ_COMMIT }}
+          path: ezmj-engine
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Compile to JavaScript
+        run: ./mvnw -q -B test-compile -Dezmj.source="$GITHUB_WORKSPACE/ezmj-engine/src" -Dmaven.test.skip.exec=true
+      - name: Test
+        run: java -cp target/classes:target/test-classes ezmj.web.AllTests
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: target/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
