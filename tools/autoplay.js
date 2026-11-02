@@ -1,0 +1,184 @@
+// 自動打完一場，用來驗證網頁版。只操作畫面上的按鈕與牌，和真人一樣，不呼叫程式內部。
+// 用法：開 http://localhost:8080/?server=ws://localhost:7788/ws，把這段貼到瀏覽器主控台，
+//       再看 window.__auto。second 是 true 時另外用 WebSocket 加入一個真人玩家，測多人桌。
+// 不要對線上的服務器跑。
+(function (options) {
+  const S = window.__auto = {
+    rounds: 0, clicks: {}, errors: [], hints: new Set(), results: [], final: null, done: false,
+    started: Date.now(), second: { messages: 0, discards: 0, wins: 0, ready: 0, errors: [] },
+  };
+  window.addEventListener('error', (e) => S.errors.push(String(e.message)));
+
+  const buttons = (selector) => [...document.querySelectorAll(selector)];
+  const find = (selector, prefix) => buttons(selector).find((b) => b.innerText.startsWith(prefix) && !b.disabled);
+  const press = (button, name) => {
+    S.clicks[name] = (S.clicks[name] || 0) + 1;
+    button.click();
+  };
+
+  function fillForm() {
+    const name = document.querySelector('input[type=text]');
+    name.value = '自動玩家';
+    name.dispatchEvent(new Event('input'));
+    const selects = document.querySelectorAll('.form-column select');
+    selects[0].value = String(options.chips);
+    selects[1].value = String(options.base);
+    selects[2].value = String(options.tai);
+    selects[selects.length - 1].value = 'FAST';
+  }
+
+  /** 從右到左點過去，點到能打的牌為止。之後的點擊因為已經不在等待，不會有作用。 */
+  function clickHand() {
+    const canvas = document.querySelector('.table-canvas canvas');
+    if (!canvas) {
+      return;
+    }
+    const r = canvas.getBoundingClientRect();
+    const y = r.bottom - 40;
+    for (let x = r.right - 4; x > r.left; x -= 8) {
+      for (const type of ['mousemove', 'mousedown']) {
+        canvas.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+      }
+    }
+  }
+
+  /** 第二位真人，只送決定，不看畫面。 */
+  function joinSecond(url, code) {
+    const socket = new WebSocket(url);
+    const send = (message) => socket.send(JSON.stringify(message));
+    let hand = [];
+    let drawn = null;
+    socket.onopen = () => send({ type: 'hello', protocol: 1, name: '第二玩家' });
+    socket.onmessage = (event) => {
+      S.second.messages++;
+      const m = JSON.parse(event.data);
+      if (m.type === 'welcome') {
+        send({ type: 'joinRoom', code });
+      } else if (m.type === 'state') {
+        hand = m.hand;
+        drawn = m.drawn;
+      } else if (m.type === 'askTurn') {
+        if (m.canSelfWin) {
+          S.second.wins++;
+          send({ type: 'selfWin', waitId: m.waitId });
+        } else {
+          S.second.discards++;
+          send({ type: 'discard', waitId: m.waitId, tile: drawn || hand[hand.length - 1] });
+        }
+      } else if (m.type === 'askClaim') {
+        const win = m.options.findIndex((o) => o.kind === 'WIN');
+        if (win >= 0) {
+          S.second.wins++;
+          send({ type: 'claim', waitId: m.waitId, option: win });
+        } else {
+          send({ type: 'pass', waitId: m.waitId });
+        }
+      } else if (m.type === 'roundEnd') {
+        S.second.ready++;
+        send({ type: 'ready' });
+      } else if (m.type === 'error') {
+        S.second.errors.push(m.code);
+      }
+    };
+    window.setInterval(() => {
+      if (socket.readyState === 1) {
+        send({ type: 'ping' });
+      }
+    }, 20000);
+    S.second.socket = socket;
+  }
+
+  let phase = 'form';
+  fillForm();
+  press(find('button', options.second ? '開房間' : '跟電腦打'), 'start');
+  phase = options.second ? 'room' : 'playing';
+
+  const timer = window.setInterval(() => {
+    if (phase === 'room') {
+      const title = document.querySelector('.room-heading .title');
+      if (title) {
+        const code = title.innerText.replace('房號 ', '');
+        joinSecond(new URLSearchParams(location.search).get('server'), code);
+        phase = 'waiting-second';
+      }
+      return;
+    }
+    if (phase === 'waiting-second') {
+      if (buttons('.room-players td').some((td) => td.innerText === '第二玩家')) {
+        press(find('button', '開始牌局'), 'start');
+        phase = 'playing';
+      }
+      return;
+    }
+    if (window.__autoHold) {
+      return;
+    }
+    const finalButton = find('.card button', '回到房間');
+    if (finalButton) {
+      S.final = document.querySelector('.card .grid').innerText;
+      S.finalHeadline = document.querySelector('.card .headline').innerText;
+      press(finalButton, 'final');
+      S.done = true;
+      S.ms = Date.now() - S.started;
+      window.clearInterval(timer);
+      return;
+    }
+    const next = find('.result-card button', '下一局') || find('.result-card button', '查看最終排名');
+    if (next) {
+      S.rounds++;
+      S.results.push(document.querySelector('.result-card .headline').innerText);
+      S.logErrors = S.logErrors || [];
+      for (const line of (document.querySelector('.log')?.innerText || '').split('\n')) {
+        if (line.includes('不能') || line.includes('沒有這個')) {
+          S.logErrors.push(line);
+        }
+      }
+      press(next, next.innerText.startsWith('下一局') ? 'next' : 'toFinal');
+      return;
+    }
+    if (document.querySelector('.backdrop')) {
+      return;
+    }
+    const hint = document.querySelector('.hint');
+    if (!hint) {
+      return;
+    }
+    const text = hint.innerText;
+    const actions = buttons('.action-buttons button');
+    const win = actions.find((b) => b.innerText === '自摸' || b.innerText === '胡');
+    if (win) {
+      press(win, win.innerText);
+      return;
+    }
+    const pass = actions.find((b) => b.innerText === '過');
+    if (pass) {
+      const claims = actions.filter((b) => b !== pass);
+      if (claims.length > 0 && Math.random() < .5) {
+        const choice = claims[Math.floor(Math.random() * claims.length)];
+        press(choice, choice.innerText);
+      } else {
+        press(pass, '過');
+      }
+      return;
+    }
+    if (text.includes('選要') || text.includes('再選一張')) {
+      S.clicks['選牌'] = (S.clicks['選牌'] || 0) + 1;
+      clickHand();
+      return;
+    }
+    if (text.startsWith('輪到你了') || text.includes('輪到你了')) {
+      const listen = actions.find((b) => b.innerText.includes(' 聽'));
+      if (listen && Math.random() < .15) {
+        press(listen, '聽牌');
+        return;
+      }
+      const kong = actions.find((b) => b.innerText === '槓');
+      if (kong && Math.random() < .5) {
+        press(kong, '槓');
+        return;
+      }
+      S.clicks['打牌'] = (S.clicks['打牌'] || 0) + 1;
+      clickHand();
+    }
+  }, 120);
+})(window.__autoOptions || { chips: 500000, base: 50, tai: 10, second: true });

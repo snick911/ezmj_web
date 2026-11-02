@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>ezmj</groupId>
+  <artifactId>ezmj-web</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+  <name>EZMJ Web</name>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>17</maven.compiler.release>
+    <teavm.version>0.16.0</teavm.version>
+    <!-- 牌局的模型與局面翻譯直接編譯 ezmj 的原始碼，和 ezmjService 一樣放在隔壁的資料夾。 -->
+    <ezmj.source>${project.basedir}/../ezmj/src</ezmj.source>
+    <site.dir>${project.build.directory}/site</site.dir>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-classlib</artifactId>
+      <version>${teavm.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-jso</artifactId>
+      <version>${teavm.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-jso-apis</artifactId>
+      <version>${teavm.version}</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>src</sourceDirectory>
+    <testSourceDirectory>test</testSourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <id>ezmj-engine</id>
+            <phase>generate-sources</phase>
+            <goals><goal>add-source</goal></goals>
+            <configuration>
+              <sources><source>${ezmj.source}</source></sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <!-- Swing 畫面用不到，網頁版自己有一份 -->
+          <excludes>
+            <exclude>ezmj/ui/**</exclude>
+            <exclude>ezmj/Main.java</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.teavm</groupId>
+        <artifactId>teavm-maven-plugin</artifactId>
+        <version>${teavm.version}</version>
+        <executions>
+          <execution>
+            <phase>process-classes</phase>
+            <goals><goal>compile</goal></goals>
+            <configuration>
+              <targetDirectory>${site.dir}</targetDirectory>
+              <targetFileName>ezmj.js</targetFileName>
+              <mainClass>ezmj.web.Main</mainClass>
+              <targetType>JAVASCRIPT</targetType>
+              <minifying>true</minifying>
+              <optimizationLevel>ADVANCED</optimizationLevel>
+              <debugInformationGenerated>false</debugInformationGenerated>
+              <sourceMapsGenerated>false</sourceMapsGenerated>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>site-files</id>
+            <phase>process-classes</phase>
+            <goals><goal>copy-resources</goal></goals>
+            <configuration>
+              <outputDirectory>${site.dir}</outputDirectory>
+              <!-- index.html 帶上版號，瀏覽器才不會留著舊版 -->
+              <nonFilteredFileExtensions>
+                <nonFilteredFileExtension>woff2</nonFilteredFileExtension>
+              </nonFilteredFileExtensions>
+              <resources>
+                <resource>
+                  <directory>web</directory>
+                  <filtering>true</filtering>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/openlogic-openjdk-17.0.14">
+		<attributes>
+			<attribute name="module" value="true"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="src" path="test"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/ezmj"/>
+	<classpathentry kind="var" path="M2_REPO/org/teavm/teavm-jso/0.16.0/teavm-jso-0.16.0.jar"/>
+	<classpathentry kind="var" path="M2_REPO/org/teavm/teavm-jso-apis/0.16.0/teavm-jso-apis-0.16.0.jar"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

@@ -1,0 +1,19 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="ezmj-version" content="${project.version}">
+<!-- token 存在瀏覽器裡，只准執行這個網站自己的程式，也只准連服務器。ws://localhost 是測試用的。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src wss://ezmj-server.onrender.com ws://localhost:* ws://127.0.0.1:*; base-uri 'none'; form-action 'none'">
+<title>EZMJ 台灣十六張麻將</title>
+<link rel="icon" href="favicon.svg?v=${project.version}" type="image/svg+xml">
+<link rel="stylesheet" href="style.css?v=${project.version}">
+</head>
+<body>
+<div id="app"></div>
+<noscript>這個遊戲要開啟 JavaScript 才能玩。</noscript>
+<script src="ezmj.js?v=${project.version}"></script>
+<script src="boot.js?v=${project.version}"></script>
+</body>
+</html>
