@@ -166,7 +166,7 @@ h1, h2, h3, p { margin: 0; }
   user-select: none;
   width: 100%;
 }
-.menu-button, .menu-close, .drawer-shade { display: none; }
+.menu-button, .menu-close, .drawer-shade, .rotate-button { display: none; }
 .action-bar {
   background: var(--panel);
   display: flex;
@@ -290,6 +290,11 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   /* 一排牌比螢幕寬時等比例縮小。尺寸寫在元素上，所以要 important */
   .tile-strip { height: auto !important; max-width: 100%; min-width: 0; }
   .tile-line { flex-wrap: wrap; }
+}
+
+/* 直向的手機多一顆轉成橫向的按鈕，只有支援的瀏覽器才會加上去 */
+@media (max-width: 900px) and (orientation: portrait) {
+  .rotate-button { display: block; left: .4rem; position: absolute; top: .3rem; }
 }
 
 /* 橫向：高度最缺，動作列移到右邊，牌桌才有完整的高度 */

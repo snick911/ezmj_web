@@ -56,6 +56,10 @@ final class TableCanvas {
     private static final int DISCARD_ROWS_TO_FIT = 3;
     /** 一局打到底每家大約打出這麼多張，手機的短邊排不下三排時，要讓每排多放幾張才放得下。 */
     private static final int DISCARDS_TO_FIT = 24;
+    /** 直向的手機排成一排時，牌的間距小於這個寬度就太難點了，手牌要分兩排。 */
+    private static final double TWO_LINES_BELOW_STEP = 30;
+    /** 分兩排時每排多留的空間，組與組之間有空隙，一排的最後一張可能超出一點。 */
+    private static final double LINE_MARGIN_SLOTS = .75;
     /** 手機的高倍率螢幕整桌重畫很吃力，超過這個倍率肉眼也看不太出差別。 */
     private static final double MAX_PIXEL_RATIO = 2;
 
@@ -72,8 +76,23 @@ final class TableCanvas {
         }
     }
 
-    /** 一家手牌列的位置，都是該家視角的座標。step 是相鄰兩張的間距，比 tileW 小時牌會互相疊住。 */
-    private record RowLayout(double x, double y, double tileW, double tileH, double step, double gap, double total) {
+    /**
+     * 一家手牌列的位置，都是該家視角的座標。step 是相鄰兩張的間距，比 tileW 小時牌會互相疊住。
+     * 手牌分兩排時，位置還是當成一長排來算，超過 wrapAt 的牌才折到第二排，往下 lineStep。只有一排時 wrapAt 是無限大。
+     */
+    private record RowLayout(double x, double y, double tileW, double tileH, double step, double gap, double total,
+                             double wrapAt, double lineStep) {
+        private boolean wrapped(double at) {
+            return at - x >= wrapAt - 1e-6;
+        }
+
+        double placeX(double at) {
+            return wrapped(at) ? at - wrapAt : at;
+        }
+
+        double placeY(double at) {
+            return wrapped(at) ? y + lineStep : y;
+        }
     }
 
     /** 飛行中的牌要去的地方。 */
@@ -139,6 +158,8 @@ final class TableCanvas {
     TableCanvas(Consumer<Tile> onDiscard) {
         this.onDiscard = onDiscard;
         host.appendChild(canvas);
+        // 手機轉向或網址列伸縮時，視窗事件可能比版面先到，所以直接看容器的大小
+        Browser.onResize(host, this::repaint);
         canvas.addEventListener("mousemove", event -> updateHover((MouseEvent) event));
         canvas.addEventListener("mouseleave", event -> {
             hover = -1;
@@ -319,8 +340,7 @@ final class TableCanvas {
     /** 中央方框與棄牌區跟著牌放大，但至少要留得下三排棄牌，不能撞到自己的手牌。 */
     private double tableUnit() {
         double unit = unit();
-        double handH = rowTileW(0, MIN_ROW_SLOTS) * TILE_RATIO;
-        double room = (height / 2.0 - handH - 8 * unit) / unit;
+        double room = (height / 2.0 - humanRowDepth()) / unit;
         double fit = room / (DISCARD_TOP + DISCARD_ROWS_TO_FIT * DISCARD_H);
         return unit * Math.max(1, Math.min(Math.min(Theme.tileScale(), MAX_TABLE_SCALE), fit));
     }
@@ -329,7 +349,20 @@ final class TableCanvas {
         return (seat == 0 ? 54 : 32) * unit() * Theme.tileScale();
     }
 
+    /** 直向的手機寬度不夠，但高度用不完，所以手牌分兩排，牌才夠大。 */
+    private boolean twoLineHand() {
+        return height > width * 1.2 && width * .98 / MIN_ROW_SLOTS < TWO_LINES_BELOW_STEP;
+    }
+
+    /** 分兩排時，第一排放幾格。 */
+    private static double firstLineSlots(double slots) {
+        return Math.ceil(Math.max(slots, MIN_ROW_SLOTS) / 2);
+    }
+
     private double rowStep(int seat, double slots) {
+        if (seat == 0 && twoLineHand()) {
+            return Math.min(preferredTileW(0), width * .98 / (firstLineSlots(slots) + LINE_MARGIN_SLOTS));
+        }
         return Math.min(preferredTileW(seat), rowLength(seat) * .98 / Math.max(slots, MIN_ROW_SLOTS));
     }
 
@@ -345,7 +378,12 @@ final class TableCanvas {
     }
 
     private double humanRowDepth() {
-        return rowTileW(0, MIN_ROW_SLOTS) * TILE_RATIO + 8 * unit();
+        double tileH = rowTileW(0, MIN_ROW_SLOTS) * TILE_RATIO;
+        return (twoLineHand() ? tileH * 2 + handLineGap() : tileH) + 8 * unit();
+    }
+
+    private double handLineGap() {
+        return 4 * unit();
     }
 
     private double botRowDepth() {
@@ -362,6 +400,9 @@ final class TableCanvas {
     }
 
     private double rowTileW(int seat, double slots) {
+        if (seat == 0 && twoLineHand()) {
+            return rowStep(0, slots);
+        }
         return Math.min(preferredTileW(seat), rowStep(seat, slots) * MAX_OVERLAP);
     }
 
@@ -420,6 +461,7 @@ final class TableCanvas {
             for (HandHit hit : hits) {
                 if (hit.tile().equals(event.tile())) {
                     fromX = hit.centerX() - width / 2.0;
+                    fromY = hit.y() + hit.h() / 2 - height / 2.0;
                 }
             }
         }
@@ -448,7 +490,8 @@ final class TableCanvas {
 
         Point slot = discardCenter(event.from(), round.player(event.from()).discards().size());
         Point from = toTable(event.from(), slot.x(), slot.y());
-        Point to = toTable(seat, meldX + tileIndex * row.step() + row.tileW() / 2, row.y() + row.tileH() / 2);
+        double tileX = meldX + tileIndex * row.step();
+        Point to = toTable(seat, row.placeX(tileX) + row.tileW() / 2, row.placeY(tileX) + row.tileH() / 2);
         double turn = Math.IEEEremainder(seatAngle(seat) - seatAngle(event.from()), Math.PI * 2);
         flights.add(new Flight(event.tile(), false, from.x(), from.y(), seatAngle(event.from()),
                 (DISCARD_W - 1) * tableUnit(), to.x(), to.y(), seatAngle(event.from()) + turn, row.tileW(),
@@ -466,7 +509,7 @@ final class TableCanvas {
             x += meld.tiles().size() * row.step() + row.gap();
         }
         x += (player.concealed().size() - 1) * row.step() + row.step() * .4;
-        Point to = toTable(seat, x + row.tileW() / 2, row.y() + row.tileH() / 2);
+        Point to = toTable(seat, row.placeX(x) + row.tileW() / 2, row.placeY(x) + row.tileH() / 2);
         flights.add(new Flight(event.tile(), seat != 0, 0, 0, seatAngle(seat), row.tileW() * .6,
                 to.x(), to.y(), seatAngle(seat), row.tileW(), Browser.now(), DRAW_FLIGHT_MS,
                 Slot.DRAWN, seat, -1));
@@ -745,8 +788,14 @@ final class TableCanvas {
         double tileW = rowTileW(seat, slots);
         double tileH = tileW * TILE_RATIO;
         double total = slots * step;
+        if (seat == 0 && twoLineHand()) {
+            double firstLine = firstLineSlots(slots);
+            return new RowLayout(-(firstLine + LINE_MARGIN_SLOTS) * step / 2,
+                    halfDepth(0) - tileH * 2 - handLineGap() - 8 * unit(), tileW, tileH, step, step * .25, total,
+                    firstLine * step, tileH + handLineGap());
+        }
         return new RowLayout(-total / 2 + rowShift(seat), halfDepth(seat) - tileH - 8 * unit(), tileW, tileH, step,
-                step * .25, total);
+                step * .25, total, Double.POSITIVE_INFINITY, 0);
     }
 
     private void paintRow(Gfx g, Player player, int seat) {
@@ -778,9 +827,9 @@ final class TableCanvas {
                     continue;
                 }
                 if (hidden) {
-                    TilePainter.paintBack(g, x, y, tileW, tileH);
+                    TilePainter.paintBack(g, row.placeX(x), row.placeY(x), tileW, tileH);
                 } else {
-                    TilePainter.paintFace(g, meld.tiles().get(i), x, y, tileW, tileH);
+                    TilePainter.paintFace(g, meld.tiles().get(i), row.placeX(x), row.placeY(x), tileW, tileH);
                 }
                 x += step;
             }
@@ -790,16 +839,16 @@ final class TableCanvas {
         for (Tile tile : hand) {
             // 被下一張疊住的部分點不到，點擊範圍只算露出來的寬度
             double hitW = index == hand.size() - 1 ? tileW : step;
-            paintDealtTile(g, seat, tile, index++, x, y, tileW, tileH, hitW, faceUp);
+            paintDealtTile(g, seat, tile, index++, row.placeX(x), row.placeY(x), tileW, tileH, hitW, faceUp);
             x += step;
         }
         if (separated != null) {
             x += step * .4;
             if (!flying(Slot.DRAWN, seat, -1)) {
-                paintDealtTile(g, seat, separated, index, x, y, tileW, tileH, tileW, faceUp);
+                paintDealtTile(g, seat, separated, index, row.placeX(x), row.placeY(x), tileW, tileH, tileW, faceUp);
             } else if (seat == 0) {
                 // 還在飛也要點得到，真人可以馬上打掉
-                addHit(x, y, tileW, tileH, separated);
+                addHit(row.placeX(x), row.placeY(x), tileW, tileH, separated);
             }
         }
         if (!dealing()) {

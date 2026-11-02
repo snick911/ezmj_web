@@ -40,6 +40,11 @@ final class TablePanel {
         HTMLElement menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
         menu.setClassName("btn menu-button");
         actionBar.appendChild(menu);
+        if (Browser.canLockLandscape()) {
+            HTMLElement rotate = Dom.button("橫向", Theme.PANEL_LIGHT, Browser::lockLandscape);
+            rotate.setClassName("btn rotate-button");
+            actionBar.appendChild(rotate);
+        }
         actionBar.appendChild(hint);
         actionBar.appendChild(actionButtons);
         main.appendChild(actionBar);

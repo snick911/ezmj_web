@@ -4,6 +4,7 @@ import org.teavm.jso.JSBody;
 import org.teavm.jso.JSFunctor;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.browser.Window;
+import org.teavm.jso.dom.html.HTMLElement;
 
 /** 瀏覽器提供的小功能。儲存空間與語音在隱私模式或舊瀏覽器可能不能用，一律靜靜地失敗。 */
 final class Browser {
@@ -64,6 +65,22 @@ final class Browser {
     @JSBody(params = "action", script = "['touchend', 'mousedown', 'keydown'].forEach(function (type) {"
             + " document.addEventListener(type, function () { action(); }, true); });")
     static native void onGesture(Callback action);
+
+    /** 這個元件大小改變時通知。 */
+    @JSBody(params = {"element", "action"}, script = "if (window.ResizeObserver) {"
+            + " new ResizeObserver(function () { action(); }).observe(element); }")
+    static native void onResize(HTMLElement element, Callback action);
+
+    /** 手機鎖定旋轉時，只有全螢幕才能用程式轉成橫向。Android 的瀏覽器可以，iPhone 的 Safari 沒有這個功能。 */
+    @JSBody(script = "return 'ontouchstart' in window && !!document.documentElement.requestFullscreen"
+            + " && !!(screen.orientation && screen.orientation.lock);")
+    static native boolean canLockLandscape();
+
+    /** 做不到就維持原樣。全螢幕用手機的返回鍵離開，轉向也跟著解除。 */
+    @JSBody(script = "document.documentElement.requestFullscreen()"
+            + ".then(function () { return screen.orientation.lock('landscape'); })"
+            + ".catch(function (e) { console.warn('不能轉成橫向：' + e.message); });")
+    static native void lockLandscape();
 
     /** 手機版面，條件要和 style.css 一樣。 */
     @JSBody(script = "return window.matchMedia('(max-width: 900px), (max-height: 560px)').matches;")
