@@ -13,6 +13,7 @@ import ezmj.model.Tile;
 import ezmj.online.OnlineClient;
 import ezmj.online.OnlineGame;
 import ezmj.online.RoomInfo;
+import ezmj.online.RoomListing;
 import ezmj.online.RoomSettings;
 
 /**
@@ -225,6 +226,11 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     @Override
     public void badMessage(String line, RuntimeException error) {
         Browser.warn("看不懂服務器的訊息：" + error.getMessage());
+    }
+
+    /** 房間列表由大廳另外的連線去要，這條不會收到。 */
+    @Override
+    public void rooms(List<RoomListing> rooms) {
     }
 
     /** 看不懂的訊息就略過：服務器每走一步都送完整的局面，下一份就補回來了。 */
@@ -516,17 +522,21 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         presenter.showIdle(" ");
         host.refreshHistory();
         int serial = roundSerial;
-        // 有動畫時先讓胡牌的大字演完，再跳出結果
-        Browser.after(settings.animation ? TableCanvas.WIN_BANNER_MS : 0, () -> showResult(end, serial));
+        // 有動畫時先讓胡牌的大字演完，再跳出結果；大胡演得比較久。台數在上面的 applyRoundEnd 就有了
+        int bannerMs = settings.animation ? TableCanvas.endBannerMs(game.result()) : 0;
+        Browser.after(bannerMs, () -> showResult(end, serial, bannerMs));
     }
 
-    /** 視窗開著的時候訊息還是會進來，所以關掉之後要先看局面是不是已經往下走了。 */
-    private void showResult(OnlineGame.RoundEnd end, int serial) {
+    /**
+     * 視窗開著的時候訊息還是會進來，所以關掉之後要先看局面是不是已經往下走了。
+     * 服務器從送出 roundEnd 開始算下一局的時間，大字演掉的部分要扣掉。
+     */
+    private void showResult(OnlineGame.RoundEnd end, int serial, int bannerMs) {
         if (shutDown || serial != roundSerial || game == null) {
             return;
         }
         OnlineGame shown = game;
-        int seconds = end.gameOver() ? RESULT_SECONDS : Math.max(1, (end.nextRoundMs() + 999) / 1000);
+        int seconds = end.gameOver() ? RESULT_SECONDS : Math.max(1, (end.nextRoundMs() - bannerMs + 999) / 1000);
         ResultDialog dialog = new ResultDialog(game, game, end.settlement(),
                 end.gameOver() ? "查看最終排名" : "下一局", seconds);
         openDialog = dialog;

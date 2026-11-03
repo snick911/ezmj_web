@@ -4,7 +4,7 @@
 
 規則全部在 [EZMJ Server](https://github.com/snick911/ezmjService) 上跑，網頁只送決定、只顯示服務器給的局面。跟電腦打就是一人房間，由服務器補三家電腦。
 
-**對應的畫面**：Swing 版 `ezmj` 0.6.0。之後改 Swing 的畫面或動畫，這裡也要跟著改，再更新這個版號，才查得出哪些修改還沒跟上。
+**對應的畫面**：Swing 版 `ezmj` 0.7.1。之後改 Swing 的畫面或動畫，這裡也要跟著改，再更新這個版號，才查得出哪些修改還沒跟上。
 
 ## 建置與打包
 
@@ -72,13 +72,13 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 | `TilePainter`、`TileArt` | 牌面與花牌圖案 | 同名 |
 | `Gfx` | Canvas 的小包裝，自己記座標轉換 | Java2D |
 | `Theme` | 顏色與字型，HTML 的樣式在 `web/style.css` | 同名 |
-| `OnlinePanel`、`RoomPanel` | 大廳、房間 | 同名 |
+| `OnlinePanel`、`LobbyBrowser`、`RoomPanel` | 大廳與房間列表、房間 | 同名 |
 | `ResultDialog`、`FinalDialog`、`HistoryDialog`、`HelpDialog`、`SettingsDialog`、`Dialog` | 各種視窗 | 同名 |
 | `SoundEffects`、`BackgroundMusic`、`MusicScores`、`VoiceLines` | 音效、音樂、語音 | 同名 |
 | `WebSettings`、`WebProfile` | 存在瀏覽器裡的設定與上次的牌局 | `AppSettings`、`OnlineProfile` |
 | `Browser`、`Dom`、`AudioOut`、`GridTable`、`TileStrip` | 瀏覽器的小工具 | |
 
-直接用 `ezmj` 原始碼的部分：`ezmj.model`、`ezmj.online` 的 `OnlineGame`、`RoomInfo`、`RoomSettings`、`Json`，`ezmj.engine` 的 `RoundView`、`Claim` 等，以及說明用的 `ezmj.rules.ScoreGuide`、`Scorer`。TeaVM 只編譯用得到的類別，`OnlineClient` 裡的執行緒與 Socket 不會進到網頁，只有 `PROTOCOL` 這個常數會。所以**協定版本改了，重新編譯就跟上**，但新訊息的處理還是要連網頁一起看。
+直接用 `ezmj` 原始碼的部分：`ezmj.model`、`ezmj.online` 的 `OnlineGame`、`RoomInfo`、`RoomSettings`、`RoomListing`、`Json`，`ezmj.engine` 的 `RoundView`、`Claim` 等，以及說明用的 `ezmj.rules.ScoreGuide`、`Scorer`。TeaVM 只編譯用得到的類別，`OnlineClient` 裡的執行緒與 Socket 不會進到網頁，只有 `PROTOCOL` 這個常數會。所以**協定版本改了，重新編譯就跟上**，但新訊息的處理還是要連網頁一起看。
 
 ## 連線
 
@@ -87,6 +87,8 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 - **斷線重連**：最多試 3 分鐘，這段時間座位由電腦代打。分頁回到前景時馬上再試。關掉網頁的話，重新打開按「接回牌局」。
 - **背景分頁**：瀏覽器會放慢背景分頁的計時器，可能趕不上服務器 60 秒的限制。收到訊息時也會順便檢查該不該送 ping，牌局進行中服務器一直有訊息，就不靠計時器。真的斷了就靠重連。
 - **版本不合**：網頁和服務器分開部署，瀏覽器可能還留著舊版。服務器回 `protocolMismatch` 時會請玩家重新整理。
+- **房間列表**：看得到大廳時另外開一條不登入的連線，每 5 秒送 `listRooms`，換到房間或牌桌就關掉。列表沒變就不重畫，選取與連點兩下才不會被打斷。服務器還不認得 `listRooms` 時，只在列表那裡顯示說明，開房與用房號加入照樣能用。
+- **跟電腦打**：一人房間一律是私人的，打完回到房間時別人不會從大廳加進來。
 
 ## 資安
 
@@ -126,7 +128,7 @@ token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束�
 - 側欄收進「選單」，牌桌上的名字旁邊標出籌碼。橫向時動作列移到右邊，牌桌才有完整的高度。
 - 牌桌的尺寸在 `TableCanvas`：`unit` 讓小螢幕的牌比照比例縮放時大，`discardColumns` 在短邊排不下三排棄牌時讓每排多放幾張。大視窗和 Swing 版一樣。
 - 直向放不下一排夠大的牌時，手牌分成兩排，見 `twoLineHand`。位置還是當成一長排來算，由 `RowLayout` 折到第二排。
-- 「橫向」按鈕用全螢幕加 `screen.orientation.lock`，手機鎖定旋轉時也能轉。iPhone 的 Safari 沒有這個功能，要玩家解除旋轉鎖定再轉手機。
+- 「全螢幕」按鈕切換整頁全螢幕，直向與橫向都有，再按一次或按手機的返回鍵離開。不會自己轉向，要橫向就解除旋轉鎖定再轉手機。iPhone 的 Safari 只有影片能全螢幕，所以沒有這顆按鈕。
 - 手指點牌是點一下抬起、再點一次才打出，滑鼠還是點一下就打出。
 - 測試時用瀏覽器開發工具的手機模式，但那不是真的手機：iOS 的 Safari、網址列伸縮與切到背景要用實機看。
 

@@ -44,7 +44,12 @@ final class Messages {
         settings.botLevels().forEach(level -> levels.add(level.name()));
         return object("type", "createRoom", "chips", settings.chips(), "basePay", settings.basePay(),
                 "taiPay", settings.taiPay(), "botLevels", levels, "waitSeconds", settings.waitSeconds(),
-                "speed", settings.speed().name());
+                "speed", settings.speed().name(), "name", settings.name(), "private", settings.privateRoom());
+    }
+
+    /** 不用登入。 */
+    static Map<String, Object> listRooms() {
+        return object("type", "listRooms");
     }
 
     static Map<String, Object> joinRoom(String code) {

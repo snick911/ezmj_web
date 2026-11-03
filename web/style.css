@@ -106,7 +106,7 @@ h1, h2, h3, p { margin: 0; }
   justify-content: center;
   padding: 1rem;
 }
-.form-card { width: min(46rem, 100%); }
+.form-card { width: min(56rem, 100%); }
 .form-columns { display: flex; flex-wrap: wrap; gap: 2.5rem; }
 .form-column { display: flex; flex: 1 1 16rem; flex-direction: column; gap: .5rem; }
 .form-row { align-items: center; display: flex; gap: .75rem; justify-content: space-between; }
@@ -129,6 +129,31 @@ h1, h2, h3, p { margin: 0; }
 .side-row .btn { flex: 1; }
 .room-card { width: min(36rem, 100%); }
 .room-heading { align-items: center; display: flex; gap: 1.5rem; justify-content: space-between; }
+.room-name { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; min-width: 0; }
+/* 房間名稱最長 30 字 */
+.title.long { font-size: 1.35rem; overflow-wrap: anywhere; }
+.private-badge {
+  background: #C93A32;
+  border-radius: 3px;
+  color: #fff;
+  font-size: .875rem;
+  font-weight: bold;
+  padding: .1rem .45rem;
+}
+.code-line { font-size: 1.1rem; font-weight: bold; }
+
+/* 大廳的房間列表：高度固定，房間多了自己捲動，畫面不會跟著跳 */
+.lobby-column { flex: 1.4 1 26rem; }
+.list-heading, .list-footer { align-items: center; display: flex; gap: .75rem; justify-content: space-between; }
+.list-heading .btn, .list-footer .btn { flex: 0 0 auto; padding: .3rem .9rem; }
+.room-list { background: var(--panel-light); height: 13rem; overflow: auto; }
+.room-list .grid { width: 100%; }
+.room-list th { background: var(--panel); position: sticky; top: 0; }
+.room-list tbody tr { cursor: pointer; }
+.room-list tbody tr:hover td { background: rgba(255, 255, 255, .06); }
+.room-list tbody tr.selected td { background: #2C6E58; color: #fff; }
+.room-list .name { min-width: 7rem; overflow-wrap: anywhere; white-space: normal; width: 100%; }
+.room-list .host { max-width: 7rem; overflow: hidden; text-overflow: ellipsis; }
 .settings-card { width: min(26rem, 100%); }
 
 /* 表格 */
@@ -151,6 +176,22 @@ h1, h2, h3, p { margin: 0; }
 .grid .ellipsis { max-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .grid .bold td { font-weight: bold; }
 .room-players .grid { width: 100%; }
+/* 計分表的莊家：紅字外面一個紅色圓圈，尺寸照 Swing 版的 DealerBadge：直徑 22，線寬約 0.09，字 0.64 */
+.dealer-badge {
+  align-items: center;
+  border: .125rem solid #E5483D;
+  border-radius: 50%;
+  color: #E5483D;
+  display: inline-flex;
+  font-size: .875rem;
+  font-weight: bold;
+  height: 1.375rem;
+  justify-content: center;
+  line-height: 1;
+  margin-left: .3rem;
+  vertical-align: middle;
+  width: 1.375rem;
+}
 
 /* 牌桌 */
 .table-screen { display: flex; height: 100%; }
@@ -166,7 +207,7 @@ h1, h2, h3, p { margin: 0; }
   user-select: none;
   width: 100%;
 }
-.menu-button, .menu-close, .drawer-shade, .rotate-button { display: none; }
+.menu-button, .menu-close, .drawer-shade, .fullscreen-button { display: none; }
 .action-bar {
   background: var(--panel);
   display: flex;
@@ -244,6 +285,11 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   /* iOS 碰到小於 16px 的輸入框會自動放大畫面 */
   .field { font-size: 16px; }
   .room-heading { flex-wrap: wrap; gap: .5rem; }
+  /* 窄的螢幕放不下等待秒數，房主的名字也縮短 */
+  .room-list { height: 11rem; }
+  .room-list .wait { display: none; }
+  .room-list .name { min-width: 5rem; }
+  .room-list .host { max-width: 4.5rem; }
 
   .sidebar {
     bottom: 0;
@@ -258,7 +304,8 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   }
   .sidebar.open { transform: none; }
   .log { flex: 1 0 6rem; }
-  .menu-button, .menu-close { display: block; }
+  /* 全螢幕的按鈕只有支援的瀏覽器才會加上去 */
+  .menu-button, .menu-close, .fullscreen-button { display: block; }
   .drawer-shade.open {
     background: rgba(0, 0, 0, .45);
     display: block;
@@ -270,6 +317,7 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   /* 直向：動作列在牌桌下面 */
   .action-bar { min-height: 4.6rem; padding: .3rem .4rem .4rem; position: relative; }
   .menu-button { position: absolute; right: .4rem; top: .3rem; }
+  .fullscreen-button { left: .4rem; position: absolute; top: .3rem; }
   .hint { min-height: 2.7rem; padding: 0 4.6rem; }
   .action-buttons { gap: .4rem; }
 
@@ -292,11 +340,6 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   .tile-line { flex-wrap: wrap; }
 }
 
-/* 直向的手機多一顆轉成橫向的按鈕，只有支援的瀏覽器才會加上去 */
-@media (max-width: 900px) and (orientation: portrait) {
-  .rotate-button { display: block; left: .4rem; position: absolute; top: .3rem; }
-}
-
 /* 橫向：高度最缺，動作列移到右邊，牌桌才有完整的高度 */
 @media (max-height: 560px) and (orientation: landscape) {
   .table-main { flex-direction: row; }
@@ -308,7 +351,7 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
     position: static;
     width: 7.4rem;
   }
-  .menu-button { flex: 0 0 auto; position: static; width: 100%; }
+  .menu-button, .fullscreen-button { flex: 0 0 auto; position: static; width: 100%; }
   .hint { font-size: .8rem; min-height: 0; padding: 0; text-align: left; }
   .action-buttons { align-items: stretch; flex-direction: column; flex-wrap: nowrap; }
   .action-buttons .btn { flex: 0 0 auto; }

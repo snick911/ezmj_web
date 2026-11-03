@@ -6,13 +6,17 @@ import org.teavm.jso.dom.html.HTMLElement;
 import ezmj.online.RoomInfo;
 import ezmj.online.RoomSettings;
 
-/** 等人開局的房間：房號、房間設定、玩家與連線狀態。房主可以開局，不到四人由電腦補滿。 */
+/** 等人開局的房間：房間名稱、房號、房間設定、玩家與連線狀態。房主可以開局，不到四人由電腦補滿。 */
 final class RoomPanel {
 
     private static final int SEATS = 4;
+    private static final int LONG_NAME = 14;
 
     private final HTMLElement root = Dom.el("div", "form-screen");
     private final HTMLElement title = Dom.text("h1", "title", " ");
+    private final HTMLElement privateBadge = Dom.text("span", "private-badge", "私人");
+    private final HTMLElement codeLine = Dom.text("div", "code-line", " ");
+    private final HTMLElement listedLine = Dom.text("div", "muted", " ");
     private final HTMLElement settingsLine = Dom.text("div", "muted", " ");
     private final HTMLElement players = Dom.el("div", "room-players");
     private final HTMLElement notice = Dom.text("div", "notice", " ");
@@ -22,9 +26,14 @@ final class RoomPanel {
     RoomPanel(Runnable onStart, Runnable onLeave) {
         HTMLElement card = Dom.el("div", "card room-card");
         HTMLElement heading = Dom.el("div", "room-heading");
-        heading.appendChild(title);
+        HTMLElement name = Dom.el("div", "room-name");
+        name.appendChild(title);
+        name.appendChild(privateBadge);
+        heading.appendChild(name);
         heading.appendChild(Dom.button("複製房號", Theme.BUTTON, () -> Browser.copy(code)));
         card.appendChild(heading);
+        card.appendChild(codeLine);
+        card.appendChild(listedLine);
         card.appendChild(settingsLine);
         card.appendChild(players);
         card.appendChild(notice);
@@ -42,8 +51,19 @@ final class RoomPanel {
 
     void setRoom(RoomInfo room) {
         code = room.code();
-        title.setInnerText("房號 " + code);
         RoomSettings settings = room.settings();
+        // 舊服務器沒有房間名稱，就和以前一樣用房號當標題
+        String name = settings.name();
+        boolean named = !name.trim().isEmpty();
+        title.setInnerText(named ? name : "房號 " + code);
+        // 名稱最長 30 字，用原本的大小會把房間撐得比螢幕還寬
+        title.setClassName(name.codePointCount(0, name.length()) > LONG_NAME ? "title long" : "title");
+        Dom.visible(privateBadge, settings.privateRoom());
+        Dom.visible(codeLine, named);
+        // 舊服務器也沒有大廳
+        Dom.visible(listedLine, named);
+        codeLine.setInnerText("房號 " + code);
+        listedLine.setInnerText(settings.privateRoom() ? "不列在大廳，把房號告訴朋友就能加入。" : "列在大廳，也可以把房號告訴朋友。");
         settingsLine.setInnerText("籌碼 " + settings.chips() + "　底 " + settings.basePay() + "　每台 " + settings.taiPay()
                 + "　每次等待 " + settings.waitSeconds() + " 秒　電腦速度" + settings.speed().label());
 

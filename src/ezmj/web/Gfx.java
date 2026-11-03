@@ -89,6 +89,18 @@ final class Gfx {
         context.setStrokeStyle(gradient);
     }
 
+    /** 以原點為圓心、半徑 radius 的圓，用放射漸層填滿，和 Swing 的 RadialGradientPaint 一樣。stops 由內往外。 */
+    void fillRadial(double radius, double[] stops, String[] colors) {
+        CanvasGradient gradient = context.createRadialGradient(0, 0, 0, 0, 0, radius);
+        for (int i = 0; i < stops.length; i++) {
+            gradient.addColorStop(stops[i], colors[i]);
+        }
+        context.setFillStyle(gradient);
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.fill();
+    }
+
     /** 和 Swing 的 new BasicStroke(width) 一樣是方頭尖角。 */
     void stroke(double width) {
         context.setLineWidth(width);

@@ -17,7 +17,7 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
     private final HTMLElement app = HTMLDocument.current().getElementById("app");
     private final WebSettings settings = WebSettings.load();
     private final String serverUrl = serverUrl();
-    private final OnlinePanel form = new OnlinePanel(this, Browser.meta("ezmj-version"));
+    private final OnlinePanel form = new OnlinePanel(this, Browser.meta("ezmj-version"), serverUrl);
     private OnlineController controller;
     private HistoryDialog history;
     private HelpDialog help;
@@ -141,11 +141,13 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
 
     @Override
     public void showRoom(RoomPanel room) {
+        form.stopLobby();
         show(room.element());
     }
 
     @Override
     public void showTable(TablePanel table) {
+        form.stopLobby();
         show(table.element());
         table.repaint();
     }
@@ -196,6 +198,8 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
         stopWakingNotice();
         form.setProfile(WebProfile.load());
         show(form.element());
+        // 房間列表只在看得到大廳時更新
+        form.startLobby();
         if (message != null) {
             Dialog.message(message);
         }

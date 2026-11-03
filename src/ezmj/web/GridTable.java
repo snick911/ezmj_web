@@ -26,8 +26,8 @@ final class GridTable {
         return root;
     }
 
-    void header(String... texts) {
-        add(head, "th", "", texts);
+    HTMLElement[] header(String... texts) {
+        return add(head, "th", "", texts);
     }
 
     HTMLElement[] row(boolean bold, String... texts) {

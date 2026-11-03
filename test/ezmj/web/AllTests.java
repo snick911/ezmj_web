@@ -61,11 +61,12 @@ public final class AllTests {
         same(Json.write(Messages.start()), "{\"type\":\"start\"}");
         same(Json.write(Messages.leave()), "{\"type\":\"leave\"}");
         same(Json.write(Messages.ping()), "{\"type\":\"ping\"}");
+        same(Json.write(Messages.listRooms()), "{\"type\":\"listRooms\"}");
     }
 
     private static void createRoomCarriesEveryOption() {
         RoomSettings settings = new RoomSettings(20000, 100, 20,
-                List.of(BotLevel.BEGINNER, BotLevel.NORMAL, BotLevel.PRO), 30, GameSpeed.FAST);
+                List.of(BotLevel.BEGINNER, BotLevel.NORMAL, BotLevel.PRO), 30, GameSpeed.FAST, "週末牌搭子", true);
         Map<String, Object> message = Messages.createRoom(settings);
         same(String.valueOf(message.get("type")), "createRoom");
         same(Json.write(message.get("botLevels")), "[\"BEGINNER\",\"NORMAL\",\"PRO\"]");
@@ -74,6 +75,8 @@ public final class AllTests {
         same(String.valueOf(message.get("taiPay")), "20");
         same(String.valueOf(message.get("waitSeconds")), "30");
         same(String.valueOf(message.get("speed")), "FAST");
+        same(String.valueOf(message.get("name")), "週末牌搭子");
+        same(String.valueOf(message.get("private")), "true");
     }
 
     /** 樂譜寫錯時各聲部會對不齊。 */

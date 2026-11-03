@@ -32,7 +32,15 @@ final class TableCanvas {
     static final int DRAW_FLIGHT_MS = 170;
     private static final int FLOWER_FLIGHT_MS = 260;
     private static final int FLOWER_BANNER_MS = 650;
+    /** 胡別家打出的牌，流局也是這麼久。 */
     static final int WIN_BANNER_MS = 1100;
+    static final int SELF_DRAW_BANNER_MS = 1400;
+    /** 大胡，見 RoundResult.isBigWin。 */
+    static final int BIG_WIN_BANNER_MS = 2400;
+    private static final int SPARKS = 40;
+    private static final double GOLDEN_ANGLE = 2.39996323;
+    private static final String BIG_WIN_TOP = "rgba(201,58,50,.922)";
+    private static final String BIG_WIN_BOTTOM = "rgba(110,18,14,.922)";
     /** 發牌每四張一批輪流發，最後一批是莊家的第 17 張。 */
     static final int DEAL_PACKETS = 17;
     static final int DEAL_FLIGHT_MS = 200;
@@ -119,8 +127,11 @@ final class TableCanvas {
         }
     }
 
-    /** 跳出來的大字。位置以牌桌中心為原點。 */
-    private record Banner(String text, double x, double y, double size, String color, boolean burst,
+    /** 大字的樣子：吃碰槓、補花與流局只有字，三種胡牌在字的後面各有不同的效果。 */
+    private enum Style { PLAIN, WIN, SELF_DRAW, BIG_WIN }
+
+    /** 跳出來的大字。位置以牌桌中心為原點。detail 是大胡時寫在字下面的台數，其他時候是 null。 */
+    private record Banner(String text, String detail, double x, double y, double size, String color, Style style,
                           double start, int durationMs) {
         double progress(double now) {
             return (now - start) / durationMs;
@@ -265,23 +276,47 @@ final class TableCanvas {
                 addSeatBanner(event.seat(), "加槓");
                 break;
             case WIN:
-                addCenterBanner(winText("胡"), Theme.GOLD, true);
-                break;
             case SELF_WIN:
-                addCenterBanner(winText("自摸"), Theme.GOLD, true);
+                addWinBanner(event.type() == RoundEvent.Type.SELF_WIN);
                 break;
             default:
-                addCenterBanner("流局", Theme.MUTED, false);
+                addCenterBanner("流局", null, Theme.MUTED, Style.PLAIN, WIN_BANNER_MS);
                 break;
         }
         frameNow = Browser.now();
         repaint();
     }
 
-    /** 靠花牌胡的直接顯示八仙過海或七搶一。 */
-    private String winText(String normal) {
+    /** 連線時結果在胡牌的事件之前就有了，所以這時候已經知道台數。靠花牌胡的直接顯示八仙過海或七搶一。 */
+    private void addWinBanner(boolean selfDraw) {
         RoundResult result = round.result();
-        return result.isFlowerWin() ? result.score().items().get(0).name() : normal;
+        Style style = result == null ? (selfDraw ? Style.SELF_DRAW : Style.WIN) : endStyle(result);
+        String text = result != null && result.isFlowerWin() ? result.score().items().get(0).name() : selfDraw ? "自摸" : "胡";
+        String detail = style == Style.BIG_WIN ? result.score().totalTai() + " 台" : null;
+        addCenterBanner(text, detail, Theme.GOLD, style, durationMs(style));
+    }
+
+    /** 一局結束的大字演多久，結果視窗等它演完才跳出來。 */
+    static int endBannerMs(RoundResult result) {
+        return durationMs(endStyle(result));
+    }
+
+    private static Style endStyle(RoundResult result) {
+        if (result == null || result.isDrawnGame()) {
+            return Style.PLAIN;
+        }
+        if (result.isBigWin()) {
+            return Style.BIG_WIN;
+        }
+        return result.isSelfDraw() ? Style.SELF_DRAW : Style.WIN;
+    }
+
+    private static int durationMs(Style style) {
+        switch (style) {
+            case SELF_DRAW: return SELF_DRAW_BANNER_MS;
+            case BIG_WIN:   return BIG_WIN_BANNER_MS;
+            default:        return WIN_BANNER_MS;
+        }
     }
 
     /** 局面變了，要重畫。下一幀之前點牌的話，會先重畫才判斷點到哪一張。 */
@@ -536,12 +571,13 @@ final class TableCanvas {
 
     private void addSeatBanner(int seat, String text, double size, int durationMs) {
         Point at = toTable(seat, 0, halfDepth(seat) * .62);
-        banners.add(new Banner(text, at.x(), at.y(), size, Theme.GOLD, false, Browser.now(), durationMs));
+        banners.add(new Banner(text, null, at.x(), at.y(), size, Theme.GOLD, Style.PLAIN, Browser.now(), durationMs));
     }
 
-    private void addCenterBanner(String text, String color, boolean burst) {
+    private void addCenterBanner(String text, String detail, String color, Style style, int durationMs) {
         banners.clear();
-        banners.add(new Banner(text, 0, 0, 120 * unit(), color, burst, Browser.now(), WIN_BANNER_MS));
+        double size = (style == Style.BIG_WIN ? 140 : 120) * unit();
+        banners.add(new Banner(text, detail, 0, 0, size, color, style, Browser.now(), durationMs));
     }
 
     /** 這個位置的牌是不是還在飛。 */
@@ -678,46 +714,156 @@ final class TableCanvas {
         g.alpha(saved);
     }
 
-    /** 大字先放大再彈回原本大小，最後淡出。 */
+    /**
+     * 大字先放大再彈回原本大小，最後淡出，照 Swing 版的 paintBanner。
+     * 胡：金色的圈往外擴散；自摸：金光加上慢慢轉的金紅光芒；大胡：紅金閃光、更多更長的光芒、往外噴再落下的彩片，
+     * 紅底的框裡多一行台數，字放大後會跳動。
+     */
     private void paintBanner(Gfx g, Banner banner) {
         double t = Math.min(1, Math.max(0, banner.progress(frameNow)));
-        double pop = t < .14 ? 1.7 - .7 * easeOut(t / .14) : 1;
-        double alpha = t > .7 ? (1 - t) / .3 : 1;
+        boolean big = banner.style() == Style.BIG_WIN;
+        double size = banner.size();
+        double pop;
+        if (big) {
+            pop = t < .12 ? 2 - easeOut(t / .12) : 1 + .04 * Math.sin((t - .12) * Math.PI * 8) * (1 - t);
+        } else {
+            pop = t < .14 ? 1.7 - .7 * easeOut(t / .14) : 1;
+        }
+        double fadeFrom = big ? .8 : .7;
+        double alpha = t > fadeFrom ? (1 - t) / (1 - fadeFrom) : 1;
         double[] savedTransform = g.transform();
         double savedAlpha = g.alpha();
         g.translate(banner.x(), banner.y());
         g.alpha(alpha);
-        if (banner.burst()) {
-            paintBurst(g, banner.size(), t);
+        switch (banner.style()) {
+            case WIN:
+                paintRings(g, size, t);
+                break;
+            case SELF_DRAW:
+                paintGlow(g, size, t);
+                paintRays(g, size, t, 16, Math.PI / 3, Theme.RED);
+                break;
+            case BIG_WIN:
+                paintFlash(g, size, t);
+                paintRays(g, size, t, 24, Math.PI / 2, "#FFFFFF");
+                paintSparks(g, size, t);
+                break;
+            default:
+                break;
         }
         g.scale(pop, pop);
-        g.font(Theme.fixedFont(true, banner.size()));
-        double textW = g.textWidth(banner.text());
-        double padX = banner.size() * .35;
-        double padY = banner.size() * .14;
-        double boxH = banner.size() * 1.33 + padY * 2;
-        g.color("rgba(11,30,24,.843)");
-        g.fillRoundRect(-textW / 2 - padX, -boxH / 2, textW + padX * 2, boxH, banner.size() * .3);
-        g.color(banner.color());
-        g.stroke(Math.max(1.5, banner.size() * .04));
-        g.drawRoundRect(-textW / 2 - padX, -boxH / 2, textW + padX * 2, boxH, banner.size() * .3);
-        g.drawCentered(banner.text(), 0, 0);
+        paintBox(g, banner, big);
         g.setTransform(savedTransform);
         g.alpha(savedAlpha);
     }
 
-    /** 胡牌時從中央往外放射的光芒。 */
-    private void paintBurst(Gfx g, double size, double t) {
-        double spread = easeOut(Math.min(1, t * 1.6));
-        double inner = size * (.6 + 1.2 * spread);
-        double outer = size * (.9 + 2.4 * spread);
-        g.roundStroke(Math.max(2, size * .05));
-        for (int i = 0; i < 16; i++) {
-            double angle = Math.PI * 2 * i / 16;
-            double reach = i % 2 == 0 ? outer : inner + (outer - inner) * .55;
-            g.color(i % 2 == 0 ? Theme.GOLD : Theme.RED);
+    /** 字和外框。大胡是紅色漸層底，字下面再寫台數。字高照 Swing 的 FontMetrics 抓字型大小的 1.33 倍。 */
+    private static void paintBox(Gfx g, Banner banner, boolean big) {
+        double size = banner.size();
+        double lineH = size * 1.33;
+        double detailSize = size * .36;
+        double detailH = 0;
+        g.font(Theme.fixedFont(true, size));
+        double textW = g.textWidth(banner.text());
+        if (banner.detail() != null) {
+            g.font(Theme.fixedFont(true, detailSize));
+            textW = Math.max(textW, g.textWidth(banner.detail()));
+            detailH = detailSize * 1.33;
+        }
+        double padX = size * .35;
+        double padY = size * .14;
+        double boxH = lineH + detailH + padY * 2;
+        double top = -boxH / 2;
+        if (big) {
+            g.gradient(0, top, BIG_WIN_TOP, 0, -top, BIG_WIN_BOTTOM);
+        } else {
+            g.color("rgba(11,30,24,.843)");
+        }
+        g.fillRoundRect(-textW / 2 - padX, top, textW + padX * 2, boxH, size * .3);
+        g.color(banner.color());
+        g.stroke(Math.max(big ? 2 : 1.5, size * (big ? .06 : .04)));
+        g.drawRoundRect(-textW / 2 - padX, top, textW + padX * 2, boxH, size * .3);
+        g.font(Theme.fixedFont(true, size));
+        g.drawCentered(banner.text(), 0, top + padY + lineH / 2);
+        if (banner.detail() != null) {
+            g.font(Theme.fixedFont(true, detailSize));
+            g.color("#FFFFFF");
+            g.drawCentered(banner.detail(), 0, top + padY + lineH + detailH / 2);
+        }
+    }
+
+    /** 胡：三個金色的圈接連往外擴散，越外面越細越淡。 */
+    private static void paintRings(Gfx g, double size, double t) {
+        for (int ring = 0; ring < 3; ring++) {
+            double r = (t - ring * .12) / .55;
+            if (r <= 0 || r >= 1) {
+                continue;
+            }
+            double radius = size * (.55 + 2.0 * easeOut(r));
+            g.color(withAlpha(Theme.GOLD, .85 * (1 - r)));
+            g.stroke(Math.max(1.5, size * .07 * (1 - r)));
+            g.drawEllipse(-radius, -radius, radius * 2, radius * 2);
+        }
+    }
+
+    /** 自摸：中央一團往外變大的金光。 */
+    private static void paintGlow(Gfx g, double size, double t) {
+        double radius = size * (1 + 1.6 * easeOut(Math.min(1, t * 1.6)));
+        g.fillRadial(radius, new double[] {0, 1}, new String[] {withAlpha(Theme.GOLD, .55), withAlpha(Theme.GOLD, 0)});
+    }
+
+    /** 大胡：一開始整片紅金閃一下。 */
+    private static void paintFlash(Gfx g, double size, double t) {
+        if (t >= .3) {
+            return;
+        }
+        double strength = .6 * (1 - t / .3);
+        g.fillRadial(size * 4, new double[] {0, .5, 1},
+                new String[] {withAlpha(Theme.GOLD, strength), withAlpha(Theme.RED, strength / 2), withAlpha(Theme.RED, 0)});
+    }
+
+    /**
+     * 從中央往外放射、慢慢轉的光芒。單數的光芒短一點，顏色用 second。turn 是整段時間轉幾弧度。
+     * 自摸 16 道、大胡 24 道，大胡的更長。
+     */
+    private static void paintRays(Gfx g, double size, double t, int count, double turn, String second) {
+        boolean big = count > 16;
+        double spread = easeOut(Math.min(1, t * (big ? 1.4 : 1.6)));
+        double inner = size * (big ? .7 + 1.0 * spread : .6 + 1.2 * spread);
+        double outer = size * (big ? 1.1 + 3.0 * spread : .9 + 2.4 * spread);
+        g.roundStroke(Math.max(2, size * (big ? .06 : .05)));
+        for (int i = 0; i < count; i++) {
+            double angle = Math.PI * 2 * i / count + t * turn;
+            double reach = i % 2 == 0 ? outer : inner + (outer - inner) * (big ? .6 : .55);
+            g.color(i % 2 == 0 ? Theme.GOLD : second);
             g.drawLine(Math.cos(angle) * inner, Math.sin(angle) * inner, Math.cos(angle) * reach, Math.sin(angle) * reach);
         }
+    }
+
+    /** 大胡：彩片照黃金角往四面噴出去，遠近不一，再慢慢往下掉、邊轉邊淡。 */
+    private static void paintSparks(Gfx g, double size, double t) {
+        String[] colors = {Theme.GOLD, Theme.RED, "#FFFFFF"};
+        double travel = easeOut(Math.min(1, t * 1.3));
+        double drop = size * 1.2 * t * t;
+        double side = size * .11 * (1 - .4 * t);
+        double[] saved = g.transform();
+        for (int i = 0; i < SPARKS; i++) {
+            double angle = i * GOLDEN_ANGLE;
+            double reach = .55 + .45 * ((i * .618034) % 1);
+            double distance = size * 3.2 * reach * travel;
+            g.translate(Math.cos(angle) * distance, Math.sin(angle) * distance + drop);
+            g.rotate(angle + t * 8);
+            g.color(withAlpha(colors[i % colors.length], 1 - .8 * t));
+            g.fillRect(-side / 2, -side / 2, side, side);
+            g.setTransform(saved);
+        }
+    }
+
+    /** "#RRGGBB" 換成帶透明度的 rgba()。取到千分位，太小的數字 Java 會寫成 1.0E-4，CSS 看不懂。 */
+    private static String withAlpha(String hex, double alpha) {
+        int rgb = Integer.parseInt(hex.substring(1), 16);
+        double clamped = Math.round(Math.max(0, Math.min(1, alpha)) * 1000) / 1000.0;
+        return "rgba(" + (rgb >> 16 & 255) + "," + (rgb >> 8 & 255) + "," + (rgb & 255) + "," + clamped + ")";
     }
 
     private static double easeOut(double t) {
@@ -935,11 +1081,25 @@ final class TableCanvas {
         g.color("rgba(0,0,0,.431)");
         g.fillRoundRect(-half, -half, half * 2, half * 2, 12 * unit);
         g.color(Theme.GOLD);
-        g.font(Theme.font(true, 22 * unit));
-        drawCenteredLine(g, Tile.windName(round.roundWind()) + "風圈", -14 * unit);
+        double labelSize = 22 * unit;
+        g.font(Theme.font(true, labelSize));
+        String label = roundLabel(round);
+        // 字體調大時四個字會超出方框，縮回框內
+        double labelWidth = g.textWidth(label);
+        double maxWidth = half * 2 - 12 * unit;
+        if (labelWidth > maxWidth) {
+            g.font(Theme.font(true, labelSize * maxWidth / labelWidth));
+        }
+        drawCenteredLine(g, label, -14 * unit);
         g.color(Theme.TEXT);
         g.font(Theme.font(false, 16 * unit));
         drawCenteredLine(g, "剩餘 " + (round.liveTiles() + undealtTiles()) + " 張", 22 * unit);
+    }
+
+    /** 圈風加局風，例如「東風東局」「南風西局」。舊服務器沒有送局風時是原本的「東風圈」。牌桌中間與右側都用這個。 */
+    static String roundLabel(RoundView round) {
+        int hand = round.handWind();
+        return Tile.windName(round.roundWind()) + "風" + (hand >= 1 && hand <= 4 ? Tile.windName(hand) + "局" : "圈");
     }
 
     private static void drawCenteredLine(Gfx g, String text, double y) {

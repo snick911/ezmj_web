@@ -71,16 +71,15 @@ final class Browser {
             + " new ResizeObserver(function () { action(); }).observe(element); }")
     static native void onResize(HTMLElement element, Callback action);
 
-    /** 手機鎖定旋轉時，只有全螢幕才能用程式轉成橫向。Android 的瀏覽器可以，iPhone 的 Safari 沒有這個功能。 */
-    @JSBody(script = "return 'ontouchstart' in window && !!document.documentElement.requestFullscreen"
-            + " && !!(screen.orientation && screen.orientation.lock);")
-    static native boolean canLockLandscape();
+    /** iPhone 的 Safari 只有影片能全螢幕，所以沒有這個功能。放在不准全螢幕的 iframe 裡也是。 */
+    @JSBody(script = "return !!document.fullscreenEnabled;")
+    static native boolean canFullscreen();
 
-    /** 做不到就維持原樣。全螢幕用手機的返回鍵離開，轉向也跟著解除。 */
-    @JSBody(script = "document.documentElement.requestFullscreen()"
-            + ".then(function () { return screen.orientation.lock('landscape'); })"
-            + ".catch(function (e) { console.warn('不能轉成橫向：' + e.message); });")
-    static native void lockLandscape();
+    /** 再按一次或用手機的返回鍵離開。做不到就維持原樣。 */
+    @JSBody(script = "var change = document.fullscreenElement ? document.exitFullscreen()"
+            + " : document.documentElement.requestFullscreen();"
+            + "change.catch(function (e) { console.warn('不能切換全螢幕：' + e.message); });")
+    static native void toggleFullscreen();
 
     /** 手機版面，條件要和 style.css 一樣。 */
     @JSBody(script = "return window.matchMedia('(max-width: 900px), (max-height: 560px)').matches;")

@@ -97,9 +97,11 @@
 
   const timer = window.setInterval(() => {
     if (phase === 'room') {
-      const title = document.querySelector('.room-heading .title');
+      // 標題是房間名稱，房號在下一行；舊服務器沒有名稱時標題就是房號
+      const title = [...document.querySelectorAll('.room-card .code-line, .room-heading .title')]
+        .map((element) => element.textContent).find((text) => text.startsWith('房號 '));
       if (title) {
-        const code = title.innerText.replace('房號 ', '');
+        const code = title.replace('房號 ', '');
         joinSecond(new URLSearchParams(location.search).get('server'), code);
         phase = 'waiting-second';
       }

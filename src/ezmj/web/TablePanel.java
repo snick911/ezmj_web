@@ -40,10 +40,10 @@ final class TablePanel {
         HTMLElement menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
         menu.setClassName("btn menu-button");
         actionBar.appendChild(menu);
-        if (Browser.canLockLandscape()) {
-            HTMLElement rotate = Dom.button("橫向", Theme.PANEL_LIGHT, Browser::lockLandscape);
-            rotate.setClassName("btn rotate-button");
-            actionBar.appendChild(rotate);
+        if (Browser.canFullscreen()) {
+            HTMLElement fullscreen = Dom.button("全螢幕", Theme.PANEL_LIGHT, Browser::toggleFullscreen);
+            fullscreen.setClassName("btn fullscreen-button");
+            actionBar.appendChild(fullscreen);
         }
         actionBar.appendChild(hint);
         actionBar.appendChild(actionButtons);
@@ -128,11 +128,16 @@ final class TablePanel {
     /** 由目前狀態更新計分板與牌桌。 */
     void refresh(GameView game, RoundView round) {
         String streak = round.streak() > 0 ? " 連" + round.streak() : "";
-        roundInfo.setInnerText(Tile.windName(round.roundWind()) + "風圈" + streak);
+        roundInfo.setInnerText(TableCanvas.roundLabel(round) + streak);
         stakesInfo.setInnerText("底 " + game.basePay() + " / 每台 " + game.taiPay());
         for (int seat = 0; seat < 4; seat++) {
             Player player = game.player(seat);
-            scoreCells[seat][0].setInnerText(Tile.windName(round.seatWind(seat)) + (round.dealer() == seat ? " 莊" : ""));
+            scoreCells[seat][0].setInnerText(Tile.windName(round.seatWind(seat)));
+            if (round.dealer() == seat) {
+                HTMLElement badge = Dom.text("span", "dealer-badge", "莊");
+                badge.setAttribute("title", "莊家");
+                scoreCells[seat][0].appendChild(badge);
+            }
             scoreCells[seat][1].setInnerText(player.name());
             String traits = game.traits(seat);
             scoreCells[seat][1].setAttribute("title", traits == null ? player.name() : player.name() + "（" + traits + "）");

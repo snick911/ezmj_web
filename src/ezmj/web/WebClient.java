@@ -1,5 +1,6 @@
 package ezmj.web;
 
+import java.util.List;
 import java.util.Map;
 
 import org.teavm.jso.dom.events.MessageEvent;
@@ -7,6 +8,7 @@ import org.teavm.jso.websocket.WebSocket;
 
 import ezmj.online.Json;
 import ezmj.online.OnlineClient;
+import ezmj.online.RoomListing;
 import ezmj.online.RoomSettings;
 import ezmj.model.Tile;
 
@@ -38,6 +40,8 @@ final class WebClient {
     private int serial;
     private boolean opened;
     private boolean loggedIn;
+    /** 不登入，只看大廳的房間列表。 */
+    private boolean browsing;
     private String token;
     private boolean finished;
     private boolean lostReported;
@@ -68,6 +72,16 @@ final class WebClient {
     void loginWithToken(String savedToken) {
         token = savedToken;
         open(Messages.helloToken(savedToken));
+    }
+
+    /** 不登入，連上就要一次房間列表。沒有 token，所以斷線不重連，直接通知 closed；錯誤也照一般訊息通知。 */
+    void browse() {
+        browsing = true;
+        open(Messages.listRooms());
+    }
+
+    void listRooms() {
+        send(Messages.listRooms());
     }
 
     void createRoom(RoomSettings settings) {
@@ -288,7 +302,16 @@ final class WebClient {
         if ("pong".equals(type)) {
             return;
         }
-        if (loggedIn) {
+        if ("rooms".equals(type)) {
+            List<RoomListing> rooms;
+            try {
+                rooms = RoomListing.parse(message);
+            } catch (IllegalArgumentException e) {
+                listener.badMessage(line, e);
+                return;
+            }
+            listener.rooms(rooms);
+        } else if (loggedIn || browsing) {
             listener.message(message);
         } else if ("welcome".equals(type)) {
             welcomed(message);
