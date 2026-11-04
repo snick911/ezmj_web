@@ -108,8 +108,14 @@ final class WebClient {
         send(Messages.discard(waitId, tile));
     }
 
-    void listen(int waitId, Tile tile) {
-        send(Messages.listen(waitId, tile));
+    /** 報聽，listenId 是服務器 canListen 給的編號。 */
+    void declareListen(int listenId) {
+        send(Messages.declareListen(listenId));
+    }
+
+    /** 房間裡的聊天，服務器會轉給房間裡每一位連著的真人，也包括自己。 */
+    void chat(String text) {
+        send(Messages.chat(text));
     }
 
     void selfWin(int waitId) {

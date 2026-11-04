@@ -235,8 +235,8 @@ final class OnlinePanel implements LobbyBrowser.View {
         return select;
     }
 
-    /** 最多 max 個字，用 code point 算。貼上的控制字元直接拿掉，服務器不收。 */
-    private static String limited(String text, int max) {
+    /** 最多 max 個字，用 code point 算。貼上的控制字元直接拿掉，服務器不收。聊天的輸入框也用。 */
+    static String limited(String text, int max) {
         StringBuilder kept = new StringBuilder();
         int count = 0;
         for (int i = 0; i < text.length() && count < max; ) {

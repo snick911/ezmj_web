@@ -4,7 +4,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import org.teavm.jso.dom.events.Event;
+import org.teavm.jso.dom.events.KeyboardEvent;
+import org.teavm.jso.dom.html.HTMLButtonElement;
 import org.teavm.jso.dom.html.HTMLElement;
+import org.teavm.jso.dom.html.HTMLInputElement;
 
 import ezmj.engine.GameView;
 import ezmj.engine.RoundEvent;
@@ -12,8 +16,14 @@ import ezmj.engine.RoundView;
 import ezmj.model.Player;
 import ezmj.model.Tile;
 
-/** 牌桌主畫面：中間是牌桌，下方是動作列，右側是計分板與紀錄。多人遊戲不能電腦代打，所以沒有那顆按鈕。 */
+/**
+ * 牌桌主畫面：中間是牌桌，下方是動作列，右側是計分板、紀錄與聊天。多人遊戲不能電腦代打，所以沒有那顆按鈕。
+ * 有聊天時紀錄預設收成一行，空出來的地方給聊天，對應 Swing 版的同名類別。
+ */
 final class TablePanel {
+
+    /** 聊天一則最多幾個字，和服務器一樣。 */
+    static final int MAX_CHAT_LENGTH = 100;
 
     /** 動作列上的一個按鈕。 */
     record ActionItem(String label, String color, Runnable run) {
@@ -29,15 +39,27 @@ final class TablePanel {
     /** 每家一列，欄位依序是門風、玩家、籌碼。 */
     private final HTMLElement[][] scoreCells = new HTMLElement[4][];
     private final HTMLElement logArea = Dom.el("div", "log");
+    private boolean logExpanded = true;
+    /** 紀錄收起來時只顯示最新一則。 */
+    private final HTMLElement latestLog = Dom.text("span", "log-latest", " ");
+    private final HTMLButtonElement logToggle = Dom.button("收合", Theme.PANEL_LIGHT, () -> setLogExpanded(!logExpanded));
+    private final HTMLElement chatBox = Dom.el("div", "chat");
+    private final HTMLElement chatList = Dom.el("div", "chat-list");
+    private final HTMLElement chatNotice = Dom.text("div", "chat-notice", " ");
+    private final HTMLInputElement chatField = (HTMLInputElement) Dom.el("input", "field chat-field");
     private final HTMLElement sidebar = Dom.el("div", "sidebar");
     private final HTMLElement shade = Dom.el("div", "drawer-shade");
+    private final HTMLElement menu;
+    private boolean drawerOpen;
+    /** 聊天送出的地方；沒有聊天時是 null。 */
+    private Consumer<String> chatSender;
 
     TablePanel(Consumer<Tile> onDiscard, Runnable onLeave, Runnable onShowHistory, Runnable onSettings, Runnable onHelp) {
         canvas = new TableCanvas(onDiscard);
         HTMLElement main = Dom.el("div", "table-main");
         main.appendChild(canvas.element());
         HTMLElement actionBar = Dom.el("div", "action-bar");
-        HTMLElement menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
+        menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
         menu.setClassName("btn menu-button");
         actionBar.appendChild(menu);
         if (Browser.canFullscreen()) {
@@ -55,10 +77,14 @@ final class TablePanel {
         root.appendChild(sidebar);
     }
 
-    /** 手機放不下側欄，要按選單才滑出來。 */
+    /** 手機放不下側欄，要按選單才滑出來。打開就收掉選單上有新聊天的記號。 */
     private void showDrawer(boolean open) {
+        drawerOpen = open;
         sidebar.setClassName(open ? "sidebar open" : "sidebar");
         shade.setClassName(open ? "drawer-shade open" : "drawer-shade");
+        if (open) {
+            menu.setClassName("btn menu-button");
+        }
     }
 
     HTMLElement element() {
@@ -84,13 +110,109 @@ final class TablePanel {
         side.appendChild(stakesInfo);
         side.appendChild(buildScoreTable());
         side.appendChild(roomInfo);
+        side.appendChild(buildLogHeader());
         side.appendChild(logArea);
+        side.appendChild(buildChatBox());
         side.appendChild(Dom.button("輸贏歷程", Theme.PANEL_LIGHT, onShowHistory));
         HTMLElement row = Dom.el("div", "side-row");
         row.appendChild(Dom.button("環境設定", Theme.PANEL_LIGHT, onSettings));
         row.appendChild(Dom.button("說明", Theme.PANEL_LIGHT, onHelp));
         side.appendChild(row);
         side.appendChild(Dom.button("離開牌局", Theme.PANEL_LIGHT, onLeave));
+    }
+
+    /** 「紀錄」一行：收起來時顯示最新一則，右邊的按鈕展開或收合，點這一行也可以。 */
+    private HTMLElement buildLogHeader() {
+        HTMLElement header = Dom.el("div", "log-header");
+        header.appendChild(Dom.text("span", "side-title", "紀錄"));
+        header.appendChild(latestLog);
+        logToggle.setClassName("btn log-toggle");
+        // 按鈕自己會切換，不要再傳到這一行又切回去
+        logToggle.addEventListener("click", Event::stopPropagation);
+        header.appendChild(logToggle);
+        header.addEventListener("click", event -> setLogExpanded(!logExpanded));
+        Dom.visible(latestLog, false);
+        return header;
+    }
+
+    /** 聊天：訊息列表、一行說明、輸入框與送出，按 Enter 也送出。有聊天時才出現。 */
+    private HTMLElement buildChatBox() {
+        chatBox.appendChild(Dom.text("div", "side-title", "聊天"));
+        chatBox.appendChild(chatList);
+        chatBox.appendChild(chatNotice);
+        chatField.setType("text");
+        chatField.setMaxLength(MAX_CHAT_LENGTH * 2);
+        chatField.setAttribute("autocomplete", "off");
+        chatField.setAttribute("placeholder", "最多 " + MAX_CHAT_LENGTH + " 字");
+        chatField.addEventListener("input", event -> {
+            String limited = OnlinePanel.limited(chatField.getValue(), MAX_CHAT_LENGTH);
+            if (!limited.equals(chatField.getValue())) {
+                chatField.setValue(limited);
+            }
+        });
+        chatField.addEventListener("keydown", event -> {
+            if ("Enter".equals(((KeyboardEvent) event).getKey())) {
+                sendChat();
+            }
+        });
+        HTMLElement input = Dom.el("div", "chat-input");
+        input.appendChild(chatField);
+        input.appendChild(Dom.button("送出", Theme.BUTTON, this::sendChat));
+        chatBox.appendChild(input);
+        Dom.visible(chatBox, false);
+        return chatBox;
+    }
+
+    /** 收起來時只留「紀錄」那一行，空出來的地方給聊天。 */
+    void setLogExpanded(boolean expanded) {
+        logExpanded = expanded;
+        Dom.visible(logArea, expanded);
+        Dom.visible(latestLog, !expanded);
+        logToggle.setInnerText(expanded ? "收合" : "展開");
+        if (expanded) {
+            logArea.setScrollTop(logArea.getScrollHeight());
+        }
+    }
+
+    /**
+     * 有聊天時 sender 不是 null：顯示聊天，紀錄預設收起來。沒有聊天就藏起來，紀錄照舊展開。
+     * 只有連線、而且桌上有兩位以上真人時才有聊天。
+     */
+    void setChat(Consumer<String> sender) {
+        boolean wasOn = chatSender != null;
+        chatSender = sender;
+        if ((sender != null) == wasOn) {
+            return;
+        }
+        Dom.visible(chatBox, sender != null);
+        setLogExpanded(sender == null);
+    }
+
+    /** 名字與文字來自網路，一律用 innerText。手機的選單收著時，在選單上標出有新訊息。 */
+    void appendChat(String name, String text, boolean mine) {
+        HTMLElement line = Dom.el("div", mine ? "chat-line mine" : "chat-line");
+        line.appendChild(Dom.text("span", "chat-name", (mine ? "我" : name) + "："));
+        line.appendChild(Dom.text("span", "", text));
+        chatList.appendChild(line);
+        chatList.setScrollTop(chatList.getScrollHeight());
+        chatNotice.setInnerText(" ");
+        if (!mine && !drawerOpen) {
+            menu.setClassName("btn menu-button unread");
+        }
+    }
+
+    /** 聊天送不出去的原因，例如說太快或舊服務器不能聊天。 */
+    void showChatNotice(String text) {
+        chatNotice.setInnerText(text);
+    }
+
+    private void sendChat() {
+        String text = chatField.getValue().trim();
+        if (chatSender == null || text.isEmpty()) {
+            return;
+        }
+        chatSender.accept(text);
+        chatField.setValue("");
     }
 
     private HTMLElement buildScoreTable() {
@@ -109,7 +231,18 @@ final class TablePanel {
 
     void bindRound(RoundView round) {
         Dom.clear(logArea);
+        latestLog.setInnerText(" ");
+        setDiscardPrompt(false);
         canvas.setRound(round);
+    }
+
+    /**
+     * 吃碰槓之後要打一張牌：動作列的提示放大成金色粗體並閃動，手牌外框也一明一暗，直到打出牌。
+     * 一般的提示是灰色的小字。
+     */
+    void setDiscardPrompt(boolean on) {
+        canvas.setDiscardPrompt(on);
+        hint.setClassName(on ? "hint prompt" : "hint");
     }
 
     void animate(RoundEvent event) {
@@ -123,6 +256,8 @@ final class TablePanel {
     void appendLog(String message) {
         logArea.appendChild(Dom.text("div", "", message));
         logArea.setScrollTop(logArea.getScrollHeight());
+        latestLog.setInnerText(message);
+        latestLog.setAttribute("title", message);
     }
 
     /** 由目前狀態更新計分板與牌桌。 */
@@ -164,10 +299,17 @@ final class TablePanel {
         setButtons(actions);
     }
 
+    /** 吃碰槓胡這些宣告做得大又醒目，胡與自摸再閃動；過、取消這種淺色的維持原本的大小。 */
     private void setButtons(List<ActionItem> actions) {
         Dom.clear(actionButtons);
         for (ActionItem action : actions) {
-            actionButtons.appendChild(Dom.button(action.label(), action.color(), action.run()));
+            HTMLElement button = Dom.button(action.label(), action.color(), action.run());
+            if (Theme.RED.equals(action.color())) {
+                button.setClassName("btn claim-button win-button");
+            } else if (!Theme.PANEL_LIGHT.equals(action.color())) {
+                button.setClassName("btn claim-button");
+            }
+            actionButtons.appendChild(button);
         }
     }
 }

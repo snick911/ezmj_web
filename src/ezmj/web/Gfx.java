@@ -157,6 +157,12 @@ final class Gfx {
         context.stroke();
     }
 
+    void fillEllipse(double x, double y, double w, double h) {
+        context.beginPath();
+        context.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+        context.fill();
+    }
+
     void drawLine(double x0, double y0, double x1, double y1) {
         context.beginPath();
         context.moveTo(x0, y0);

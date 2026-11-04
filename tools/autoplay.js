@@ -149,6 +149,18 @@
     }
     const text = hint.innerText;
     const actions = buttons('.action-buttons button');
+    // 打出牌後聽牌了才有這顆，閒著或被問要不要宣告時都可能出現，按一半的機會
+    const declare = actions.find((b) => b.innerText === '聽牌');
+    if (declare && !S.listenSkipped) {
+      if (Math.random() < .5) {
+        press(declare, '報聽');
+        return;
+      }
+      S.listenSkipped = true;
+    }
+    if (!declare) {
+      S.listenSkipped = false;
+    }
     const win = actions.find((b) => b.innerText === '自摸' || b.innerText === '胡');
     if (win) {
       press(win, win.innerText);
@@ -170,12 +182,7 @@
       clickHand();
       return;
     }
-    if (text.startsWith('輪到你了') || text.includes('輪到你了')) {
-      const listen = actions.find((b) => b.innerText.includes(' 聽'));
-      if (listen && Math.random() < .15) {
-        press(listen, '聽牌');
-        return;
-      }
+    if (text.includes('輪到你了') || text.includes('要打一張牌出去')) {
       const kong = actions.find((b) => b.innerText === '槓');
       if (kong && Math.random() < .5) {
         press(kong, '槓');

@@ -72,8 +72,13 @@ final class Messages {
         return object("type", "discard", "waitId", waitId, "tile", tile.code());
     }
 
-    static Map<String, Object> listen(int waitId, Tile tile) {
-        return object("type", "listen", "waitId", waitId, "tile", tile.code());
+    /** 打完牌之後才報聽，舊的 listen（打出並報聽）網頁不再用。 */
+    static Map<String, Object> declareListen(int listenId) {
+        return object("type", "declareListen", "listenId", listenId);
+    }
+
+    static Map<String, Object> chat(String text) {
+        return object("type", "chat", "text", text);
     }
 
     static Map<String, Object> selfWin(int waitId) {

@@ -1,6 +1,7 @@
 package ezmj.web;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -41,6 +42,10 @@ final class TableCanvas {
     private static final double GOLDEN_ANGLE = 2.39996323;
     private static final String BIG_WIN_TOP = "rgba(201,58,50,.922)";
     private static final String BIG_WIN_BOTTOM = "rgba(110,18,14,.922)";
+    /** 報聽時「聽」標記彈出來、外面兩個圈擴散的時間。 */
+    static final int LISTEN_BADGE_MS = 900;
+    /** 吃碰槓後要打牌時，手牌外框一明一暗的週期。 */
+    static final int PROMPT_PULSE_MS = 1000;
     /** 發牌每四張一批輪流發，最後一批是莊家的第 17 張。 */
     static final int DEAL_PACKETS = 17;
     static final int DEAL_FLIGHT_MS = 200;
@@ -161,6 +166,11 @@ final class TableCanvas {
     private boolean compact;
     private double frameNow;
     private double dealStart;
+    /** 各座位報聽動畫開始的時間，0 表示沒有在演。 */
+    private final double[] listenStart = new double[4];
+    /** 吃碰槓後要打牌，手牌外框亮起。 */
+    private boolean discardPrompt;
+    private double promptStart;
     private boolean repaintRequested;
     private boolean hitsStale;
     private int width;
@@ -203,7 +213,20 @@ final class TableCanvas {
         this.round = round;
         flights.clear();
         banners.clear();
+        Arrays.fill(listenStart, 0);
+        discardPrompt = false;
         dealStart = 0;
+        repaint();
+    }
+
+    /** 吃碰槓之後要打一張牌：自己的手牌外框一明一暗，直到打出牌。 */
+    void setDiscardPrompt(boolean on) {
+        if (on == discardPrompt) {
+            return;
+        }
+        discardPrompt = on;
+        promptStart = Browser.now();
+        frameNow = promptStart;
         repaint();
     }
 
@@ -279,6 +302,10 @@ final class TableCanvas {
             case SELF_WIN:
                 addWinBanner(event.type() == RoundEvent.Type.SELF_WIN);
                 break;
+            case LISTEN:
+                addSeatBanner(event.seat(), "報聽");
+                listenStart[event.seat()] = Browser.now();
+                break;
             default:
                 addCenterBanner("流局", null, Theme.MUTED, Style.PLAIN, WIN_BANNER_MS);
                 break;
@@ -343,10 +370,22 @@ final class TableCanvas {
         hitsStale = false;
         flights.removeIf(flight -> flight.finished(now));
         banners.removeIf(banner -> banner.progress(now) >= 1);
+        boolean listenAnimating = false;
+        for (int seat = 0; seat < listenStart.length; seat++) {
+            if (listenStart[seat] != 0 && listenProgress(seat) >= 1) {
+                listenStart[seat] = 0;
+            }
+            listenAnimating |= listenStart[seat] != 0;
+        }
         paintComponent();
-        if (!flights.isEmpty() || !banners.isEmpty() || dealing()) {
+        if (!flights.isEmpty() || !banners.isEmpty() || dealing() || listenAnimating || discardPrompt) {
             requestFrame();
         }
+    }
+
+    /** 報聽動畫的進度，0 到 1；沒有在演時是 1。 */
+    private double listenProgress(int seat) {
+        return listenStart[seat] == 0 ? 1 : (frameNow - listenStart[seat]) / LISTEN_BADGE_MS;
     }
 
     /** 畫布跟著容器走，實際像素要乘上螢幕的倍率，高解析度螢幕才不會糊。 */
@@ -892,13 +931,48 @@ final class TableCanvas {
         String text = dealerMark + wind + "  " + player.name() + (compact ? "  " + player.chips() : "");
         g.font(Theme.font(true, 14 * unit));
         g.color(active ? "#000000" : Theme.TEXT);
+        // 報聽的標記放在右端、轉角的方格內側，名字往左讓開
+        boolean listening = round.isListening(seat);
+        double badgeRoom = listening ? 32 * unit : 0;
         // 字體調大時，長名字要縮回方框內
         double textWidth = g.textWidth(text);
-        double maxWidth = half * 2 - 8 * unit;
+        double maxWidth = half * 2 - 8 * unit - badgeRoom * 2;
         if (textWidth > maxWidth) {
             g.font(Theme.font(true, 14 * unit * maxWidth / textWidth));
         }
-        g.drawCentered(text, 0, half - 15 * unit);
+        g.drawCentered(text, -badgeRoom / 2, half - 15 * unit);
+        if (listening) {
+            paintListenBadge(g, half - 46 * unit, half - 15 * unit, 12.5 * unit, listenProgress(seat));
+        }
+    }
+
+    /**
+     * 報聽的人方框邊上的「聽」：紅底圓形、金色圓框、白色粗體字，照 Swing 版。t 是報聽動畫的進度：
+     * 一開始從 2.4 倍大彈回原本大小，同時有兩個金圈往外擴散、變淡，t 到 1 之後就是靜止的標記。
+     */
+    private static void paintListenBadge(Gfx g, double cx, double cy, double radius, double t) {
+        if (t < 1) {
+            for (int ring = 0; ring < 2; ring++) {
+                double r = (t - ring * .2) / .8;
+                if (r <= 0 || r >= 1) {
+                    continue;
+                }
+                double reach = radius * (1 + 3 * easeOut(r));
+                g.color(withAlpha(Theme.GOLD, .8 * (1 - r)));
+                g.stroke(Math.max(1.5, radius * .25 * (1 - r)));
+                g.drawEllipse(cx - reach, cy - reach, reach * 2, reach * 2);
+            }
+        }
+        double scale = t < .35 ? 2.4 - 1.4 * easeOut(t / .35) : 1;
+        double r = radius * scale;
+        g.color(Theme.RED);
+        g.fillEllipse(cx - r, cy - r, r * 2, r * 2);
+        g.color(Theme.GOLD);
+        g.stroke(Math.max(1.5, r * .16));
+        g.drawEllipse(cx - r, cy - r, r * 2, r * 2);
+        g.color("#FFFFFF");
+        g.font(Theme.fixedFont(true, r * 1.2));
+        g.drawCentered("聽", cx, cy);
     }
 
     private void paintDiscards(Gfx g, int seat, Player player, double unit) {
@@ -997,8 +1071,29 @@ final class TableCanvas {
                 addHit(row.placeX(x), row.placeY(x), tileW, tileH, separated);
             }
         }
+        if (seat == 0 && discardPrompt && !finished) {
+            paintPromptGlow(g, row);
+        }
         if (!dealing()) {
             paintFlowers(g, player, flowersX(seat, row), y, tableUnit());
+        }
+    }
+
+    /**
+     * 吃碰槓後要打牌：自己整列牌外面一圈金色圓角框，一明一暗，週期 PROMPT_PULSE_MS，照 Swing 版。
+     * 外面再疊兩圈比較寬、比較淡的框當作光暈。手牌分兩排時框住兩排。
+     */
+    private void paintPromptGlow(Gfx g, RowLayout row) {
+        double phase = (frameNow - promptStart) / PROMPT_PULSE_MS;
+        double strength = .55 + .45 * Math.sin(Math.PI * 2 * phase);
+        double pad = 6 * unit();
+        boolean wrapped = row.total() > row.wrapAt();
+        double w = wrapped ? row.wrapAt() : row.total();
+        double h = row.tileH() + (wrapped ? row.lineStep() : 0);
+        for (int layer = 2; layer >= 0; layer--) {
+            g.color(withAlpha(Theme.GOLD, strength * (layer == 0 ? .95 : .25 / layer)));
+            g.stroke((3 + layer * 5) * unit());
+            g.drawRoundRect(row.x() - pad, row.y() - pad, w + pad * 2, h + pad * 2, 14 * unit());
         }
     }
 
