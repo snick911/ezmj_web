@@ -132,8 +132,7 @@ final class OnlinePanel implements LobbyBrowser.View {
         HTMLElement footer = Dom.el("div", "version");
         footer.appendChild(Dom.text("span", "", "網頁版 " + version + "　" + HelpDialog.COPYRIGHT + "　依 "));
         footer.appendChild(Dom.link("AGPL-3.0", HelpDialog.LICENSE_URL));
-        footer.appendChild(Dom.text("span", "", " 授權，不提供任何擔保　"));
-        footer.appendChild(Dom.link("原始碼", HelpDialog.SOURCE_URL));
+        footer.appendChild(Dom.text("span", "", " 授權，不提供任何擔保"));
         return footer;
     }
 

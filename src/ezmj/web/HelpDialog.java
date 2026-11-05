@@ -20,10 +20,8 @@ import ezmj.table.TableFlow;
 final class HelpDialog extends Dialog {
 
     static final String COPYRIGHT = "© 2026 snick911";
-    static final String SOURCE_URL = "https://github.com/snick911/ezmj_web";
-    static final String LICENSE_URL = SOURCE_URL + "/blob/main/LICENSE";
-    private static final String ISSUES_URL = SOURCE_URL + "/issues";
-    private static final String ENGINE_URL = "https://github.com/snick911/ezmj";
+    static final String LICENSE_URL = "https://www.gnu.org/licenses/agpl-3.0.html";
+    private static final String ISSUES_URL = "https://github.com/snick911/ezmj_web/issues";
 
     private static final int RULE_TILE_W = 30;
     private static final int EXAMPLE_TILE_W = 24;
@@ -181,7 +179,8 @@ final class HelpDialog extends Dialog {
 
     /**
      * AGPL 第 5 條的「適當的法律聲明」：著作權、不提供擔保、可以照這個授權散布，以及去哪裡看授權條款。
-     * 原版的畫面有顯示，改過的版本就要照樣顯示，不要拿掉。
+     * 原版的畫面有顯示，改過的版本就要照樣顯示，不要拿掉。原始碼的網址是作者決定不放的，
+     * 改過的版本架成網站時，照 AGPL 第 13 條要讓玩家拿得到它自己的原始碼。
      */
     private void showAbout() {
         Dom.clear(page);
@@ -190,14 +189,12 @@ final class HelpDialog extends Dialog {
         p("這個程式是自由軟體：你可以依照自由軟體基金會發布的 GNU Affero 通用公眾授權條款第 3 版（AGPL-3.0）使用、修改與散布。");
         p("這個程式不提供任何擔保，連適售性或特定用途的適用性都沒有。詳細內容請看授權條款，以英文原文為準。");
         link("授權條款", LICENSE_URL);
-        link("原始碼", SOURCE_URL);
         note("修改過的版本架成網站給別人玩，也要讓玩家拿得到完整的原始碼，這段聲明也要留著。");
         h2("商業授權");
         p("不想公開原始碼的商業用途，可以向作者取得商業授權，請到 GitHub Issues 開一則標題寫「商業授權」的 issue。");
         link("GitHub Issues", ISSUES_URL);
         h2("其他部分的授權");
         p("牌、規則與局面翻譯來自 EZMJ，同樣是 AGPL-3.0。");
-        link("EZMJ 原始碼", ENGINE_URL);
         p("牌面的備用字型是霞鶩文楷 TC 的子集，授權是 SIL Open Font License 1.1。");
         p("TeaVM 編進來的 Java 執行環境，授權是 Apache License 2.0。");
         page.setScrollTop(0);

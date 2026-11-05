@@ -4,7 +4,7 @@
 
 規則全部在 [EZMJ Server](https://github.com/snick911/ezmjService) 上跑，網頁只送決定、只顯示服務器給的局面。跟電腦打就是一人房間，由服務器補三家電腦。
 
-**對應的畫面**：Swing 版 `ezmj` 0.9.0。之後改 Swing 的畫面或動畫，這裡也要跟著改，再更新這個版號，才查得出哪些修改還沒跟上。
+**對應的畫面**：Swing 版 `ezmj` 0.9.1。之後改 Swing 的畫面或動畫，這裡也要跟著改，再更新這個版號，才查得出哪些修改還沒跟上。
 
 ## 建置與打包
 
@@ -155,7 +155,7 @@ Copyright © 2026 snick911
 
 [`ezmj`](https://github.com/snick911/ezmj) 與 [`ezmjService`](https://github.com/snick911/ezmjService) 是同樣的授權。網頁會把 `ezmj` 的程式碼一起編進去，所以兩邊的條款都適用。
 
-大廳下方的版號旁有著作權、授權與原始碼的連結，「說明」的「關於」有完整的聲明，內容在 `HelpDialog.showAbout`。AGPL 規定原版的畫面有顯示這些，改過的版本也要顯示，不要拿掉。
+大廳下方的版號旁有著作權與授權，「說明」的「關於」有完整的聲明，內容在 `HelpDialog.showAbout`。AGPL 規定原版的畫面有顯示這些，改過的版本也要顯示，不要拿掉。授權條款連到 gnu.org；畫面上不放原始碼的網址，這是作者的選擇，不是 AGPL 的要求。
 
 下面這些不是這個專案寫的，保留原本的授權：
 
