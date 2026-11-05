@@ -18,6 +18,8 @@ import ezmj.engine.Round;
 import ezmj.engine.RoundEvent;
 import ezmj.engine.RoundResult;
 import ezmj.engine.RoundView;
+import ezmj.engine.WallRing;
+import ezmj.model.Dice;
 import ezmj.model.Meld;
 import ezmj.model.Player;
 import ezmj.model.Tile;
@@ -46,16 +48,47 @@ final class TableCanvas {
     static final int LISTEN_BADGE_MS = 900;
     /** 吃碰槓後要打牌時，手牌外框一明一暗的週期。 */
     static final int PROMPT_PULSE_MS = 1000;
+    /**
+     * 開局先擲骰子：三顆骰子從莊家面前滾到中間，DICE_ROLL_MS 停住，亮出點數與開門的位置，
+     * DICE_MS 之後才從牌牆發牌。DICE_BOUNCE_MS 是骰子落地出聲的時間。服務器留 3 秒，骰子加發牌要在這之內。
+     */
+    static final int DICE_ROLL_MS = 650;
+    static final int DICE_MS = 1100;
+    static final int[] DICE_BOUNCE_MS = {300, 480, 620};
+    /** 發牌開始後骰子淡出、中央的字淡入的時間。 */
+    private static final int DICE_FADE_MS = 300;
+    /** 開門位置的金線，發牌開始後再留這麼久。 */
+    private static final int OPEN_MARK_MS = 600;
+    private static final double DICE_SIZE = 26;
+    private static final String DIE_FACE = "#F8F3E6";
+    private static final String DIE_EDGE = "#8A7F6A";
+    private static final String DIE_PIP = "#1E232B";
+    /** 骰子各點的位置，以一面的中心為原點，單位是點距。 */
+    private static final double[][][] PIPS = {
+        {},
+        {{0, 0}},
+        {{-1, -1}, {1, 1}},
+        {{-1, -1}, {0, 0}, {1, 1}},
+        {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}},
+        {{-1, -1}, {1, -1}, {0, 0}, {-1, 1}, {1, 1}},
+        {{-1, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {1, 1}},
+    };
     /** 發牌每四張一批輪流發，最後一批是莊家的第 17 張。 */
     static final int DEAL_PACKETS = 17;
     static final int DEAL_FLIGHT_MS = 200;
     static final int DEAL_INTERVAL_MS = 70;
     static final int DEAL_MS = (DEAL_PACKETS - 1) * DEAL_INTERVAL_MS + DEAL_FLIGHT_MS;
+    /** 發牌從牌頭拿走的張數：每家 16 張，莊家多一張。 */
+    private static final int DEALT_TILES = (DEAL_PACKETS - 1) * 4 + 1;
 
+    /** 牌牆在中央方框四邊名字的外面，深度裡上下兩張錯開，上面那張往中間偏。 */
+    private static final double WALL_TOP = 103;
+    private static final double WALL_DEPTH = 17;
     private static final int DISCARD_COLUMNS = 8;
     private static final double DISCARD_W = 25;
     private static final double DISCARD_H = 33;
-    private static final double DISCARD_TOP = 104;
+    /** 棄牌排在牌牆外面。 */
+    private static final double DISCARD_TOP = 123;
     private static final double FLOWER_W = 22;
     private static final double FLOWER_H = 30;
     private static final int RING_MS = 170;
@@ -105,6 +138,17 @@ final class TableCanvas {
 
         double placeY(double at) {
             return wrapped(at) ? y + lineStep : y;
+        }
+    }
+
+    /**
+     * 一面牌牆的位置，該家視角。牌牆從 top 往外 depth 那麼深，左右從 -top 到 top + depth，
+     * 四面像風車一樣各佔一個角，彼此不重疊。每墩寬 stackW，牌寬 tileW、深 tileH，上面那張往中間錯開 lift。
+     */
+    private record WallLayout(double top, double depth, double stackW, double tileW, double tileH, double lift) {
+        /** 從右端數過來第 column 墩的左邊。 */
+        double stackX(int column) {
+            return top + depth - (column + 1) * stackW + (stackW - tileW) / 2;
         }
     }
 
@@ -165,7 +209,12 @@ final class TableCanvas {
     /** 手機版面：牌桌上沒有計分板，籌碼要標在名字旁邊。 */
     private boolean compact;
     private double frameNow;
+    /** 擲骰子開始的時間，發牌在 DICE_MS 之後。0 表示沒有在演。 */
     private double dealStart;
+    /** 這局開門的骰子，牌牆照它畫。 */
+    private Dice dice;
+    /** 上一個演過的事件。摸牌緊接在補花或槓之後就是從牌尾補的。 */
+    private RoundEvent lastEvent;
     /** 各座位報聽動畫開始的時間，0 表示沒有在演。 */
     private final double[] listenStart = new double[4];
     /** 吃碰槓後要打牌，手牌外框亮起。 */
@@ -209,13 +258,15 @@ final class TableCanvas {
         return host;
     }
 
-    void setRound(RoundView round) {
+    void setRound(RoundView round, Dice dice) {
         this.round = round;
+        this.dice = dice;
         flights.clear();
         banners.clear();
         Arrays.fill(listenStart, 0);
         discardPrompt = false;
         dealStart = 0;
+        lastEvent = null;
         repaint();
     }
 
@@ -230,19 +281,36 @@ final class TableCanvas {
         repaint();
     }
 
-    /** 開始發牌動畫。牌局其實已經發好了，這裡只是讓牌一批一批出現。 */
+    /** 先擲骰子，再從牌牆一批一批發牌。牌局其實已經發好了，這裡只是讓牌一批一批出現。 */
     void animateDeal() {
         dealStart = Browser.now();
         frameNow = dealStart;
         repaint();
     }
 
-    private double dealElapsedMs() {
+    /** 從擲骰子開始過了多久。 */
+    private double diceElapsedMs() {
         return frameNow - dealStart;
     }
 
+    /** 發牌開始了多久，還在擲骰子時是負的。 */
+    private double dealElapsedMs() {
+        return diceElapsedMs() - DICE_MS;
+    }
+
+    /** 擲骰子與發牌都算。 */
     private boolean dealing() {
         return dealStart != 0 && dealElapsedMs() < DEAL_MS;
+    }
+
+    /** 手牌第 index 張是第幾批發的。每家每批四張，莊家先拿，最後一批是莊家的第 17 張。 */
+    private int dealPacket(int seat, int index) {
+        return index >= 16 ? DEAL_PACKETS - 1 : index / 4 * 4 + Math.floorMod(seat - round.dealer(), 4);
+    }
+
+    /** 手牌第 index 張是牌頭的第幾張。 */
+    private int dealtFrom(int seat, int index) {
+        return index >= 16 ? DEALT_TILES - 1 : dealPacket(seat, index) * 4 + index % 4;
     }
 
     /** 手牌第 index 張的發牌進度：小於 0 還沒發，0 到 1 飛行中，1 以上已落地。 */
@@ -250,17 +318,45 @@ final class TableCanvas {
         if (!dealing()) {
             return 1;
         }
-        int packet = index >= 16 ? DEAL_PACKETS - 1 : index / 4 * 4 + Math.floorMod(seat - round.dealer(), 4);
-        return (dealElapsedMs() - packet * DEAL_INTERVAL_MS) / DEAL_FLIGHT_MS;
+        return (dealElapsedMs() - dealPacket(seat, index) * DEAL_INTERVAL_MS) / DEAL_FLIGHT_MS;
     }
 
-    /** 還沒發出去的張數，讓中央的剩餘張數跟著往下數。 */
+    /** 還沒發出去的張數，讓中央的剩餘張數與牌牆跟著往下數。 */
     private int undealtTiles() {
         if (!dealing()) {
             return 0;
         }
+        if (dealElapsedMs() < 0) {
+            return DEALT_TILES;
+        }
         int started = (int) (dealElapsedMs() / DEAL_INTERVAL_MS) + 1;
         return started >= DEAL_PACKETS ? 0 : (DEAL_PACKETS - 1 - started) * 4 + 1;
+    }
+
+    /** 這局的牌牆。沒有骰子時是 null。 */
+    private WallRing ring() {
+        return dice == null ? null : new WallRing(round.dealer(), dice);
+    }
+
+    /** 牌牆上看得到的：發牌時牌頭一批一批少下去，發完才補花，所以牌尾等發完才少。 */
+    private WallRing.Taken wallTaken() {
+        return dealing() ? new WallRing.Taken(DEALT_TILES - undealtTiles(), 0) : WallRing.taken(round);
+    }
+
+    private WallLayout wallLayout() {
+        double unit = tableUnit();
+        double top = WALL_TOP * unit;
+        double depth = WALL_DEPTH * unit;
+        double stackW = (top * 2 + depth) / WallRing.STACKS_PER_SIDE;
+        double lift = depth * .24;
+        return new WallLayout(top, depth, stackW, stackW * .9, depth - lift, lift);
+    }
+
+    /** 第 stack 墩的中心點，以牌桌中心為原點。 */
+    private Point stackCenter(int stack) {
+        WallLayout wall = wallLayout();
+        return toTable(WallRing.side(stack), wall.stackX(WallRing.column(stack)) + wall.tileW() / 2,
+                wall.top() + wall.depth() / 2);
     }
 
     /** 播放事件的動畫。只影響畫面，牌局狀態已經更新好了。 */
@@ -310,8 +406,25 @@ final class TableCanvas {
                 addCenterBanner("流局", null, Theme.MUTED, Style.PLAIN, WIN_BANNER_MS);
                 break;
         }
+        lastEvent = event;
         frameNow = Browser.now();
         repaint();
+    }
+
+    /** 這次摸牌是從牌尾補的：同一家剛補花或開槓。 */
+    private boolean fromTail(RoundEvent draw) {
+        if (lastEvent == null || lastEvent.seat() != draw.seat()) {
+            return false;
+        }
+        switch (lastEvent.type()) {
+            case FLOWER:
+            case KONG:
+            case CONCEALED_KONG:
+            case ADD_KONG:
+                return true;
+            default:
+                return false;
+        }
     }
 
     /** 連線時結果在胡牌的事件之前就有了，所以這時候已經知道台數。靠花牌胡的直接顯示八仙過海或七搶一。 */
@@ -573,7 +686,10 @@ final class TableCanvas {
         addSeatBanner(seat, text);
     }
 
-    /** 摸到的牌從牌桌中央飛到手牌右邊。別家的牌背朝上。 */
+    /**
+     * 摸到的牌從牌牆飛到手牌右邊：一般從牌頭，補花與開槓之後從牌尾。別家的牌背朝上。
+     * 局面已經更新，剛拿走的就是牌頭或牌尾的最後一張。
+     */
     private void addDrawFlight(RoundEvent event) {
         int seat = event.seat();
         Player player = round.player(seat);
@@ -584,12 +700,26 @@ final class TableCanvas {
         }
         x += (player.concealed().size() - 1) * row.step() + row.step() * .4;
         Point to = toTable(seat, row.placeX(x) + row.tileW() / 2, row.placeY(x) + row.tileH() / 2);
-        flights.add(new Flight(event.tile(), seat != 0, 0, 0, seatAngle(seat), row.tileW() * .6,
-                to.x(), to.y(), seatAngle(seat), row.tileW(), Browser.now(), DRAW_FLIGHT_MS,
+        Point from = new Point(0, 0);
+        double fromAngle = seatAngle(seat);
+        double fromW = row.tileW() * .6;
+        WallRing ring = ring();
+        WallRing.Taken taken = WallRing.taken(round);
+        boolean tail = fromTail(event);
+        int index = (tail ? taken.tail() : taken.head()) - 1;
+        if (ring != null && index >= 0) {
+            int stack = tail ? ring.tailStack(index) : ring.headStack(index);
+            from = stackCenter(stack);
+            fromAngle = seatAngle(WallRing.side(stack));
+            fromW = wallLayout().tileW();
+        }
+        double toAngle = fromAngle + Math.IEEEremainder(seatAngle(seat) - fromAngle, Math.PI * 2);
+        flights.add(new Flight(event.tile(), seat != 0, from.x(), from.y(), fromAngle, fromW,
+                to.x(), to.y(), toAngle, row.tileW(), Browser.now(), DRAW_FLIGHT_MS,
                 Slot.DRAWN, seat, -1));
     }
 
-    /** 花牌從牌桌中央飛到該家的花牌列，旁邊跳出小一點的字。 */
+    /** 花牌從手牌亮出來，飛到該家的花牌列，旁邊跳出小一點的字。補的牌接著從牌尾飛過來。 */
     private void addFlowerFlight(RoundEvent event) {
         int seat = event.seat();
         int index = round.player(seat).flowers().size() - 1;
@@ -597,8 +727,10 @@ final class TableCanvas {
         double unit = tableUnit();
         double w = FLOWER_W * unit;
         double h = FLOWER_H * unit;
+        double middle = row.x() + Math.min(row.total(), row.wrapAt()) / 2;
+        Point from = toTable(seat, middle, row.y() + row.tileH() / 2);
         Point to = toTable(seat, flowersX(seat, row) + index * w + w / 2, row.y() - 6 * unit - h / 2);
-        flights.add(new Flight(event.tile(), false, 0, 0, seatAngle(seat), w * .7,
+        flights.add(new Flight(event.tile(), false, from.x(), from.y(), seatAngle(seat), row.tileW(),
                 to.x(), to.y(), seatAngle(seat), w - 1, Browser.now(), FLOWER_FLIGHT_MS,
                 Slot.FLOWER, seat, index));
         addSeatBanner(seat, "補花", 34 * unit(), FLOWER_BANNER_MS);
@@ -700,6 +832,7 @@ final class TableCanvas {
             g.setTransform(base);
             g.translate(cx, cy);
             paintCenterText(g, tableUnit());
+            paintDice(g, tableUnit());
             for (Flight flight : flights) {
                 paintFlight(g, flight);
             }
@@ -914,8 +1047,131 @@ final class TableCanvas {
         Player player = round.player(seat);
         double tableUnit = tableUnit();
         paintSeatLabel(g, seat, player, tableUnit);
+        paintWall(g, seat);
         paintDiscards(g, seat, player, tableUnit);
         paintRow(g, player, seat);
+    }
+
+    /**
+     * 這家面前的牌牆，該家視角，照 Swing 版。拿走的墩空出來，只剩下面那張的墩比較暗。
+     * 擲完骰子到發牌開始後一下子，開門的地方有一條金線。
+     */
+    private void paintWall(Gfx g, int seat) {
+        WallRing ring = ring();
+        if (ring == null) {
+            return;
+        }
+        WallLayout wall = wallLayout();
+        WallRing.Taken taken = wallTaken();
+        for (int column = 0; column < WallRing.STACKS_PER_SIDE; column++) {
+            int left = ring.remaining(WallRing.stack(seat, column), taken.head(), taken.tail());
+            if (left == 0) {
+                continue;
+            }
+            double x = wall.stackX(column);
+            double y = wall.top() + wall.lift();
+            TilePainter.paintBack(g, x, y, wall.tileW(), wall.tileH());
+            g.color("rgba(0,0,0,.314)");
+            g.fillRoundRect(x, y, wall.tileW(), wall.tileH(), wall.tileW() * .3);
+            if (left == 2) {
+                TilePainter.paintBack(g, x, wall.top(), wall.tileW(), wall.tileH());
+            }
+        }
+        double mark = openMarkAlpha();
+        if (mark > 0 && WallRing.side(ring.start()) == seat) {
+            double unit = tableUnit();
+            double x = wall.stackX(WallRing.column(ring.start())) + wall.tileW() + (wall.stackW() - wall.tileW()) / 2;
+            double saved = g.alpha();
+            g.alpha(saved * mark);
+            g.color(Theme.GOLD);
+            g.roundStroke(Math.max(2, 3 * unit));
+            g.drawLine(x, wall.top() - 5 * unit, x, wall.top() + wall.depth() + 5 * unit);
+            g.alpha(saved);
+        }
+    }
+
+    /** 開門金線的透明度：骰子停下來才出現，發牌開始後慢慢淡掉。 */
+    private double openMarkAlpha() {
+        if (dealStart == 0) {
+            return 0;
+        }
+        double t = diceElapsedMs();
+        if (t < DICE_ROLL_MS) {
+            return 0;
+        }
+        double fadeFrom = DICE_MS + OPEN_MARK_MS / 2.0;
+        return t < fadeFrom ? 1 : Math.max(0, 1 - (t - fadeFrom) / (OPEN_MARK_MS / 2.0));
+    }
+
+    /** 骰子還看得到的時候是 1，發牌開始後淡出，之後是 0。 */
+    private double diceAlpha() {
+        if (dealStart == 0 || dice == null) {
+            return 0;
+        }
+        double t = diceElapsedMs();
+        return t <= DICE_MS ? 1 : Math.max(0, 1 - (t - DICE_MS) / DICE_FADE_MS);
+    }
+
+    /**
+     * 三顆骰子從莊家面前邊轉邊跳到中央，滾動時點數一直換，停下來就是這局的點數，下面跳出總點數。
+     * 1 點與 4 點是紅色的，和真的骰子一樣。照 Swing 版。
+     */
+    private void paintDice(Gfx g, double unit) {
+        double alpha = diceAlpha();
+        if (alpha <= 0) {
+            return;
+        }
+        double t = diceElapsedMs();
+        double size = DICE_SIZE * unit;
+        double roll = Math.min(1, t / DICE_ROLL_MS);
+        double eased = easeOut(roll);
+        int[] faces = {dice.first(), dice.second(), dice.third()};
+        double savedAlpha = g.alpha();
+        g.alpha(savedAlpha * alpha);
+        for (int i = 0; i < faces.length; i++) {
+            double toX = (i - 1) * size * 1.3;
+            double toY = -8 * unit;
+            Point from = toTable(round.dealer(), toX * .8, (WALL_TOP - 20) * unit);
+            double x = from.x() + (toX - from.x()) * eased;
+            double y = from.y() + (toY - from.y()) * eased;
+            double hop = roll < 1 ? Math.abs(Math.sin(Math.PI * (2 + i) * eased)) * (1 - eased) : 0;
+            double scale = 1 + .5 * hop;
+            double angle = (1 - eased) * Math.PI * (3 + i);
+            int face = roll < 1 ? 1 + Math.floorMod((int) (t / 70) * (i + 2) + faces[i] + i * 3, 6) : faces[i];
+            double[] saved = g.transform();
+            g.translate(x, y);
+            g.rotate(angle);
+            g.scale(scale, scale);
+            paintDie(g, face, size);
+            g.setTransform(saved);
+        }
+        if (t >= DICE_ROLL_MS) {
+            double p = Math.min(1, (t - DICE_ROLL_MS) / 180.0);
+            double pop = 1.5 - .5 * easeOut(p);
+            g.color(Theme.GOLD);
+            g.font(Theme.fixedFont(true, 20 * unit * pop));
+            g.drawCentered(dice.total() + " 點", 0, 32 * unit);
+        }
+        g.alpha(savedAlpha);
+    }
+
+    /** 一顆骰子，中心在原點：米白圓角方塊加陰影，點是深色，1 與 4 點是紅色。 */
+    private static void paintDie(Gfx g, int face, double size) {
+        double corner = size * .28;
+        double shadow = size * .07;
+        g.color("rgba(0,0,0,.353)");
+        g.fillRoundRect(-size / 2 + shadow, -size / 2 + shadow, size, size, corner);
+        g.color(DIE_FACE);
+        g.fillRoundRect(-size / 2, -size / 2, size, size, corner);
+        g.color(DIE_EDGE);
+        g.stroke(Math.max(1, size * .05));
+        g.drawRoundRect(-size / 2, -size / 2, size, size, corner);
+        g.color(face == 1 || face == 4 ? Theme.RED : DIE_PIP);
+        double r = size * (face == 1 ? .14 : .085);
+        double step = size * .26;
+        for (double[] pip : PIPS[face]) {
+            g.fillEllipse(pip[0] * step - r, pip[1] * step - r, r * 2, r * 2);
+        }
     }
 
     /** 中央方框四邊標示各家門風與姓名，輪到的一家亮起。 */
@@ -1108,7 +1364,10 @@ final class TableCanvas {
         hits.add(new HandHit(x + width / 2.0, y + height / 2.0, Math.ceil(w), Math.ceil(h), tile));
     }
 
-    /** 發牌時，牌背朝上從牌桌中央轉著飛過來，落地後才是一般的手牌。原點就是牌桌中央。 */
+    /**
+     * 發牌時，牌背朝上從牌牆上拿的那一墩轉著飛過來，落地後才是一般的手牌。原點是牌桌中央，座標是這家的視角。
+     * 起飛時和牌牆上的牌一樣大、一樣的方向。
+     */
     private void paintDealtTile(Gfx g, int seat, Tile tile, int index, double x, double y, double w, double h,
                                 double hitW, boolean faceUp) {
         double progress = dealProgress(seat, index);
@@ -1116,10 +1375,25 @@ final class TableCanvas {
             paintHandTile(g, seat, tile, x, y, w, h, hitW, faceUp);
         } else if (progress >= 0) {
             double eased = easeOut(progress);
-            double scale = .6 + .4 * eased;
+            double fromX = 0;
+            double fromY = 0;
+            double turn = .9;
+            double from = .6;
+            WallRing ring = ring();
+            if (ring != null) {
+                int stack = ring.headStack(dealtFrom(seat, index));
+                Point center = stackCenter(stack);
+                // 牌桌座標轉回這家的視角
+                Point local = toTable(Math.floorMod(-seat, 4), center.x(), center.y());
+                fromX = local.x();
+                fromY = local.y();
+                turn = Math.IEEEremainder(seatAngle(WallRing.side(stack)) - seatAngle(seat), Math.PI * 2);
+                from = Math.min(1, wallLayout().tileW() / w);
+            }
+            double scale = from + (1 - from) * eased;
             double[] saved = g.transform();
-            g.translate((x + w / 2) * eased, (y + h / 2) * eased);
-            g.rotate((1 - eased) * .9);
+            g.translate(fromX + (x + w / 2 - fromX) * eased, fromY + (y + h / 2 - fromY) * eased);
+            g.rotate((1 - eased) * turn);
             TilePainter.paintBack(g, -w * scale / 2, -h * scale / 2, w * scale, h * scale);
             g.setTransform(saved);
         }
@@ -1171,10 +1445,22 @@ final class TableCanvas {
         }
     }
 
+    /** 中央方框的圈風與剩餘張數。擲骰子時骰子在方框上，字先藏起來，骰子淡出時再淡入。 */
     private void paintCenterText(Gfx g, double unit) {
         double half = 70 * unit;
         g.color("rgba(0,0,0,.431)");
         g.fillRoundRect(-half, -half, half * 2, half * 2, 12 * unit);
+        double textAlpha = 1 - diceAlpha();
+        if (textAlpha <= 0) {
+            return;
+        }
+        double saved = g.alpha();
+        g.alpha(saved * textAlpha);
+        paintCenterLines(g, unit, half);
+        g.alpha(saved);
+    }
+
+    private void paintCenterLines(Gfx g, double unit, double half) {
         g.color(Theme.GOLD);
         double labelSize = 22 * unit;
         g.font(Theme.font(true, labelSize));

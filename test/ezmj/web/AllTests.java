@@ -3,13 +3,17 @@ package ezmj.web;
 import java.util.List;
 import java.util.Map;
 
+import ezmj.engine.WallRing;
 import ezmj.model.BotLevel;
+import ezmj.model.Dice;
 import ezmj.model.GameSpeed;
 import ezmj.model.MusicTrack;
 import ezmj.model.Suit;
 import ezmj.model.Tile;
 import ezmj.online.Json;
 import ezmj.online.OnlineClient;
+import ezmj.online.OnlineGame;
+import ezmj.online.RoomInfo;
 import ezmj.online.RoomSettings;
 
 /**
@@ -28,6 +32,7 @@ public final class AllTests {
         createRoomCarriesEveryOption();
         everyVoiceHasTheSameLength();
         voiceTextUsesTableNames();
+        diceMatchSwingClient();
         System.out.println("通過 " + passed + " 項");
     }
 
@@ -97,6 +102,26 @@ public final class AllTests {
                 check(Math.abs(beats - score.totalBeats()) < 1e-9, track + " 有一個聲部是 " + beats + " 拍");
             }
         }
+    }
+
+    /**
+     * 服務器不送骰子，同桌的網頁與 Swing 版各自用房號等資料算，點數與開門的位置要一樣。
+     * 這組數字和 ezmj 的 OnlineTest 一樣，算法改了兩邊要一起改。
+     */
+    @SuppressWarnings("unchecked")
+    private static void diceMatchSwingClient() {
+        OnlineGame game = new OnlineGame();
+        game.applyRoom(RoomInfo.parse((Map<String, Object>) Json.parse("{\"type\":\"room\",\"code\":\"ABC234\","
+                + "\"state\":\"playing\",\"yourSeat\":2,\"options\":{\"chips\":5000,\"basePay\":100,\"taiPay\":20,"
+                + "\"botLevels\":[\"NORMAL\",\"PRO\",\"BEGINNER\"],\"waitSeconds\":30,\"speed\":\"FAST\"},\"players\":["
+                + "{\"seat\":0,\"name\":\"小明\",\"human\":true,\"connected\":true,\"gender\":null},"
+                + "{\"seat\":1,\"name\":\"阿土\",\"human\":false,\"connected\":true,\"gender\":\"MALE\"},"
+                + "{\"seat\":2,\"name\":\"小花\",\"human\":true,\"connected\":true,\"gender\":null},"
+                + "{\"seat\":3,\"name\":\"小美\",\"human\":true,\"connected\":true,\"gender\":null}]}")));
+        game.applyRoundStart((Map<String, Object>) Json.parse(
+                "{\"type\":\"roundStart\",\"number\":7,\"dealer\":0,\"roundWind\":1,\"streak\":1,\"dealMs\":3000}"));
+        check(game.dice().equals(new Dice(1, 3, 1)), "骰子應該是 1、3、1，實際是 " + game.dice());
+        same(WallRing.announce(game, game.dice()), "小明 擲出 1、3、1，共 5 點，從小明的牌牆開門");
     }
 
     private static void voiceTextUsesTableNames() {

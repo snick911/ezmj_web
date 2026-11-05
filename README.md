@@ -4,7 +4,7 @@
 
 規則全部在 [EZMJ Server](https://github.com/snick911/ezmjService) 上跑，網頁只送決定、只顯示服務器給的局面。跟電腦打就是一人房間，由服務器補三家電腦。
 
-**對應的畫面**：Swing 版 `ezmj` 0.8.0。之後改 Swing 的畫面或動畫，這裡也要跟著改，再更新這個版號，才查得出哪些修改還沒跟上。
+**對應的畫面**：Swing 版 `ezmj` 0.8.0 之後還沒發布的修改（牌牆、擲骰子、紀錄預設收起來）。`ezmj` 發布時改成那個版號。之後改 Swing 的畫面或動畫，這裡也要跟著改，再更新這個版號，才查得出哪些修改還沒跟上。
 
 ## 建置與打包
 
@@ -51,7 +51,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 
 ## 測試
 
-`test/ezmj/web/AllTests.java` 不依賴框架，直接執行 `main`，只測不碰瀏覽器的部分：訊息格式、協定版本、樂譜。
+`test/ezmj/web/AllTests.java` 不依賴框架，直接執行 `main`，只測不碰瀏覽器的部分：訊息格式、協定版本、樂譜、骰子的點數。
 
 畫面與連線要在瀏覽器裡實際打。`tools/autoplay.js` 只操作畫面上的按鈕與牌，和真人一樣，會打完一整場並把結果留在 `window.__auto`：
 
@@ -78,7 +78,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 | `WebSettings`、`WebProfile` | 存在瀏覽器裡的設定與上次的牌局 | `AppSettings`、`OnlineProfile` |
 | `Browser`、`Dom`、`AudioOut`、`GridTable`、`TileStrip` | 瀏覽器的小工具 | |
 
-直接用 `ezmj` 原始碼的部分：`ezmj.model`、`ezmj.online` 的 `OnlineGame`、`RoomInfo`、`RoomSettings`、`RoomListing`、`Json`，`ezmj.engine` 的 `RoundView`、`Claim` 等，以及說明用的 `ezmj.rules.ScoreGuide`、`Scorer`。TeaVM 只編譯用得到的類別，`OnlineClient` 裡的執行緒與 Socket 不會進到網頁，只有 `PROTOCOL` 這個常數會。所以**協定版本改了，重新編譯就跟上**，但新訊息的處理還是要連網頁一起看。
+直接用 `ezmj` 原始碼的部分：`ezmj.model`、`ezmj.online` 的 `OnlineGame`、`RoomInfo`、`RoomSettings`、`RoomListing`、`Json`，`ezmj.engine` 的 `RoundView`、`Claim`、畫牌牆用的 `WallRing` 等，以及說明用的 `ezmj.rules.ScoreGuide`、`Scorer`。TeaVM 只編譯用得到的類別，`OnlineClient` 裡的執行緒與 Socket 不會進到網頁，只有 `PROTOCOL` 這個常數會。所以**協定版本改了，重新編譯就跟上**，但新訊息的處理還是要連網頁一起看。
 
 ## 連線
 
@@ -89,7 +89,8 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 - **版本不合**：網頁和服務器分開部署，瀏覽器可能還留著舊版。服務器回 `protocolMismatch` 時會請玩家重新整理。
 - **房間列表**：看得到大廳時另外開一條不登入的連線，每 5 秒送 `listRooms`，換到房間或牌桌就關掉。列表沒變就不重畫，選取與連點兩下才不會被打斷。服務器還不認得 `listRooms` 時，只在列表那裡顯示說明，開房與用房號加入照樣能用。
 - **跟電腦打**：一人房間一律是私人的，打完回到房間時別人不會從大廳加進來。
-- **聊天**：桌上有兩位以上真人才有，走牌局同一條連線的 `chat`。服務器不補送斷線期間的訊息。說太快、太長或舊服務器不能聊天，都只顯示在聊天區。
+- **聊天**：連線的牌桌都有，跟電腦打的一人房間也有，走牌局同一條連線的 `chat`。「紀錄」一律預設收起來，空出來的地方給聊天，收合按鈕是 CSS 畫的箭頭。服務器不補送斷線期間的訊息。說太快、太長或舊服務器不能聊天，都只顯示在聊天區。
+- **擲骰子與牌牆**：照 Swing 版，規則與時間見 `ezmj` README 的「擲骰子與牌牆」。服務器沒有送骰子，用 `OnlineGame.dice` 從房號、莊家、圈風、局風與連莊數算，和同桌的 Swing 版一樣；`AllTests` 比對一組固定的點數，算法改了兩邊要一起改。骰子加發牌約 2.4 秒，要在 `roundStart` 的 `dealMs`（3 秒）之內。
 - **報聽**：打出牌後服務器送 `canListen` 才出現「聽牌」按鈕，按了送 `declareListen`。`askTurn` 的 `readyDiscards` 網頁不再用。
 
 ## 資安

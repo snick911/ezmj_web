@@ -259,8 +259,27 @@ h1, h2, h3, p { margin: 0; }
 .log-header { align-items: center; cursor: pointer; display: flex; gap: .5rem; }
 .side-title { color: var(--gold); flex: 0 0 auto; font-size: .81rem; font-weight: bold; }
 .log-latest { flex: 1; font-size: .81rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar .log-toggle { flex: 0 0 auto; font-size: .75rem; margin-left: auto; padding: .15rem .5rem; }
-/* 聊天：有聊天時紀錄收起來，空出來的地方都給聊天 */
+.sidebar .log-toggle {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 1.6rem;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0;
+  width: 1.9rem;
+}
+/* 收合按鈕的箭頭：V 字朝下是展開，朝上是收合，和 Swing 版一樣 */
+.log-toggle::before {
+  border-bottom: 2px solid var(--text);
+  border-right: 2px solid var(--text);
+  content: "";
+  height: .4rem;
+  transform: translateY(-.12rem) rotate(45deg);
+  width: .4rem;
+}
+.log-toggle.expanded::before { transform: translateY(.12rem) rotate(-135deg); }
+/* 聊天：紀錄預設收起來，空出來的地方都給聊天 */
 .chat { display: flex; flex: 1; flex-direction: column; gap: .3rem; min-height: 9rem; }
 .chat-list {
   background: var(--panel-light);

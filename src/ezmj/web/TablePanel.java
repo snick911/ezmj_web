@@ -13,12 +13,13 @@ import org.teavm.jso.dom.html.HTMLInputElement;
 import ezmj.engine.GameView;
 import ezmj.engine.RoundEvent;
 import ezmj.engine.RoundView;
+import ezmj.model.Dice;
 import ezmj.model.Player;
 import ezmj.model.Tile;
 
 /**
  * 牌桌主畫面：中間是牌桌，下方是動作列，右側是計分板、紀錄與聊天。多人遊戲不能電腦代打，所以沒有那顆按鈕。
- * 有聊天時紀錄預設收成一行，空出來的地方給聊天，對應 Swing 版的同名類別。
+ * 紀錄一律預設收成一行，空出來的地方給聊天，對應 Swing 版的同名類別。
  */
 final class TablePanel {
 
@@ -39,10 +40,11 @@ final class TablePanel {
     /** 每家一列，欄位依序是門風、玩家、籌碼。 */
     private final HTMLElement[][] scoreCells = new HTMLElement[4][];
     private final HTMLElement logArea = Dom.el("div", "log");
-    private boolean logExpanded = true;
+    private boolean logExpanded;
     /** 紀錄收起來時只顯示最新一則。 */
     private final HTMLElement latestLog = Dom.text("span", "log-latest", " ");
-    private final HTMLButtonElement logToggle = Dom.button("收合", Theme.PANEL_LIGHT, () -> setLogExpanded(!logExpanded));
+    /** 箭頭是 CSS 畫的，按鈕本身沒有字，說明放在 title 與 aria-label。 */
+    private final HTMLButtonElement logToggle = Dom.button("", Theme.PANEL_LIGHT, () -> setLogExpanded(!logExpanded));
     private final HTMLElement chatBox = Dom.el("div", "chat");
     private final HTMLElement chatList = Dom.el("div", "chat-list");
     private final HTMLElement chatNotice = Dom.text("div", "chat-notice", " ");
@@ -75,6 +77,7 @@ final class TablePanel {
         root.appendChild(shade);
         buildSidebar(onLeave, onShowHistory, onSettings, onHelp);
         root.appendChild(sidebar);
+        setLogExpanded(false);
     }
 
     /** 手機放不下側欄，要按選單才滑出來。打開就收掉選單上有新聊天的記號。 */
@@ -121,17 +124,15 @@ final class TablePanel {
         side.appendChild(Dom.button("離開牌局", Theme.PANEL_LIGHT, onLeave));
     }
 
-    /** 「紀錄」一行：收起來時顯示最新一則，右邊的按鈕展開或收合，點這一行也可以。 */
+    /** 「紀錄」一行：收起來時顯示最新一則，右邊的箭頭展開或收合，點這一行也可以。 */
     private HTMLElement buildLogHeader() {
         HTMLElement header = Dom.el("div", "log-header");
         header.appendChild(Dom.text("span", "side-title", "紀錄"));
         header.appendChild(latestLog);
-        logToggle.setClassName("btn log-toggle");
         // 按鈕自己會切換，不要再傳到這一行又切回去
         logToggle.addEventListener("click", Event::stopPropagation);
         header.appendChild(logToggle);
         header.addEventListener("click", event -> setLogExpanded(!logExpanded));
-        Dom.visible(latestLog, false);
         return header;
     }
 
@@ -163,29 +164,25 @@ final class TablePanel {
         return chatBox;
     }
 
-    /** 收起來時只留「紀錄」那一行，空出來的地方給聊天。 */
+    /** 紀錄一律預設收起來，只留「紀錄」那一行，空出來的地方給聊天。箭頭朝下是展開，朝上是收合。 */
     void setLogExpanded(boolean expanded) {
         logExpanded = expanded;
         Dom.visible(logArea, expanded);
         Dom.visible(latestLog, !expanded);
-        logToggle.setInnerText(expanded ? "收合" : "展開");
+        logToggle.setClassName(expanded ? "btn log-toggle expanded" : "btn log-toggle");
+        String action = expanded ? "收合紀錄" : "展開紀錄";
+        logToggle.setAttribute("title", action);
+        logToggle.setAttribute("aria-label", action);
+        logToggle.setAttribute("aria-expanded", String.valueOf(expanded));
         if (expanded) {
             logArea.setScrollTop(logArea.getScrollHeight());
         }
     }
 
-    /**
-     * 有聊天時 sender 不是 null：顯示聊天，紀錄預設收起來。沒有聊天就藏起來，紀錄照舊展開。
-     * 只有連線、而且桌上有兩位以上真人時才有聊天。
-     */
+    /** 連線的牌桌都有聊天，跟電腦打的一人房間也有，sender 是送出的地方。傳 null 就藏起來。 */
     void setChat(Consumer<String> sender) {
-        boolean wasOn = chatSender != null;
         chatSender = sender;
-        if ((sender != null) == wasOn) {
-            return;
-        }
         Dom.visible(chatBox, sender != null);
-        setLogExpanded(sender == null);
     }
 
     /** 名字與文字來自網路，一律用 innerText。手機的選單收著時，在選單上標出有新訊息。 */
@@ -229,11 +226,12 @@ final class TablePanel {
         return table.element();
     }
 
-    void bindRound(RoundView round) {
+    /** 換一局。dice 是這局開門的骰子，牌桌照它畫牌牆。 */
+    void bindRound(RoundView round, Dice dice) {
         Dom.clear(logArea);
         latestLog.setInnerText(" ");
         setDiscardPrompt(false);
-        canvas.setRound(round);
+        canvas.setRound(round, dice);
     }
 
     /**
