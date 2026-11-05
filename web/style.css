@@ -125,6 +125,7 @@ h1, h2, h3, p { margin: 0; }
 .check { height: 1.1rem; width: 1.1rem; }
 .status { color: var(--muted); font-size: .875rem; min-height: 2.6em; }
 .version { color: var(--muted); font-size: .75rem; text-align: right; }
+.link { color: var(--gold); overflow-wrap: anywhere; }
 .side-row { display: flex; gap: .5rem; }
 .side-row .btn { flex: 1; }
 .room-card { width: min(36rem, 100%); }

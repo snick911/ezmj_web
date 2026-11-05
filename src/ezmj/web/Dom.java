@@ -35,6 +35,15 @@ final class Dom {
         return button;
     }
 
+    /** 開在新分頁的連結。網址都是寫死的，文字一樣用 innerText。 */
+    static HTMLElement link(String text, String href) {
+        HTMLElement link = text("a", "link", text);
+        link.setAttribute("href", href);
+        link.setAttribute("target", "_blank");
+        link.setAttribute("rel", "noopener noreferrer");
+        return link;
+    }
+
     static void color(HTMLElement element, String color) {
         element.getStyle().setProperty("color", color);
     }

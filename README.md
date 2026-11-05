@@ -138,3 +138,26 @@ token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束�
 ## 字型
 
 `web/fonts/ezmj-kai.woff2` 是 [霞鶩文楷 TC](https://github.com/lxgw/LxgwWenkaiTC) 的子集，只有牌面用到的 24 個字，授權是 SIL Open Font License，全文在 `web/fonts/OFL.txt`。牌面要加新的字就要重新產生。
+
+## 授權
+
+Copyright © 2026 snick911
+
+雙重授權，依用途選一種：
+
+- **[AGPL-3.0](LICENSE)**（`AGPL-3.0-only`）：任何人都可以使用、修改、散布，包括商業用途，但修改過的版本要用同樣的授權公開完整原始碼。修改後架成網站或服務給別人用，也要讓使用者拿得到原始碼。
+- **商業授權**：要用在不公開原始碼的產品或服務，請到 [GitHub Issues](https://github.com/snick911/ezmj_web/issues) 開一則標題寫「商業授權」的 issue，另外談條件。
+
+[`ezmj`](https://github.com/snick911/ezmj) 與 [`ezmjService`](https://github.com/snick911/ezmjService) 是同樣的授權。網頁會把 `ezmj` 的程式碼一起編進去，所以兩邊的條款都適用。
+
+大廳下方的版號旁有著作權、授權與原始碼的連結，「說明」的「關於」有完整的聲明，內容在 `HelpDialog.showAbout`。AGPL 規定原版的畫面有顯示這些，改過的版本也要顯示，不要拿掉。
+
+下面這些不是這個專案寫的，保留原本的授權：
+
+| 部分 | 授權 |
+|---|---|
+| `web/fonts/ezmj-kai.woff2` | SIL Open Font License 1.1，全文在 `web/fonts/OFL.txt` |
+| TeaVM 編進 `ezmj.js` 的執行環境 | Apache License 2.0 |
+| `mvnw`、`mvnw.cmd`、`.mvn/` | Apache License 2.0，見各檔案開頭 |
+
+要送 PR 請先看 [CONTRIBUTING.md](CONTRIBUTING.md)。

@@ -100,7 +100,7 @@ final class OnlinePanel implements LobbyBrowser.View {
         columns.appendChild(buildLeft());
         columns.appendChild(buildRight());
         card.appendChild(columns);
-        card.appendChild(Dom.text("div", "version", "網頁版 " + version));
+        card.appendChild(footer(version));
         root.appendChild(card);
 
         nameField.addEventListener("input", event -> syncButtons());
@@ -125,6 +125,16 @@ final class OnlinePanel implements LobbyBrowser.View {
 
     HTMLElement element() {
         return root;
+    }
+
+    /** 版號與著作權。完整的授權聲明在說明的「關於」。 */
+    private static HTMLElement footer(String version) {
+        HTMLElement footer = Dom.el("div", "version");
+        footer.appendChild(Dom.text("span", "", "網頁版 " + version + "　" + HelpDialog.COPYRIGHT + "　依 "));
+        footer.appendChild(Dom.link("AGPL-3.0", HelpDialog.LICENSE_URL));
+        footer.appendChild(Dom.text("span", "", " 授權，不提供任何擔保　"));
+        footer.appendChild(Dom.link("原始碼", HelpDialog.SOURCE_URL));
+        return footer;
     }
 
     private HTMLElement buildLeft() {
