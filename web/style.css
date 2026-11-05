@@ -209,6 +209,8 @@ h1, h2, h3, p { margin: 0; }
   width: 100%;
 }
 .menu-button, .menu-close, .drawer-shade, .fullscreen-button { display: none; }
+/* 選單與全螢幕的外框只有手機橫向時才排版，其他時候兩顆按鈕照原本的位置放 */
+.corner-buttons { display: contents; }
 .action-bar {
   background: var(--panel);
   display: flex;
@@ -417,23 +419,65 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   .tile-line { flex-wrap: wrap; }
 }
 
-/* 橫向：高度最缺，動作列移到右邊，牌桌才有完整的高度 */
+/*
+ * 橫向：高度最缺，動作列整個蓋在牌桌上，牌桌用滿整個畫面。條件要和 Browser.isLandscapeCompact 一樣。
+ * 提示在自己手牌左上方，吃碰槓胡聽在右上方，位置由牌桌算好寫在 --hint-* 與 --act-*；選單與全螢幕浮在右上角。
+ * 動作列本身點不到，點擊會落到牌桌上，只有按鈕點得到。
+ */
 @media (max-height: 560px) and (orientation: landscape) {
-  .table-main { flex-direction: row; }
+  .table-main { position: relative; }
   .action-bar {
-    flex: 0 0 7.4rem;
-    justify-content: flex-start;
+    --hint-left: 3rem;
+    --hint-bottom: 7rem;
+    --hint-width: 12rem;
+    --act-right: 4rem;
+    --act-bottom: 5.5rem;
+    --act-width: 12rem;
+    background: none;
+    display: block;
+    inset: 0;
     min-height: 0;
-    overflow-y: auto;
-    position: static;
-    width: 7.4rem;
+    padding: 0;
+    pointer-events: none;
+    position: absolute;
   }
+  .corner-buttons { display: flex; gap: .35rem; position: absolute; right: .4rem; top: .3rem; }
   /* relative 讓新聊天的紅點有地方對齊 */
-  .menu-button, .fullscreen-button { flex: 0 0 auto; position: relative; width: 100%; }
-  .hint { font-size: .8rem; min-height: 0; padding: 0; text-align: left; }
+  .menu-button, .fullscreen-button {
+    font-size: .8rem;
+    inset: auto;
+    min-height: 2.2rem;
+    opacity: .92;
+    padding: .2rem .65rem;
+    pointer-events: auto;
+    position: relative;
+  }
+  /* 牌桌上沒有底色，字加陰影才看得清楚；字多時往上長 */
+  .hint {
+    bottom: var(--hint-bottom);
+    color: #E6E2D6;
+    font-size: .8rem;
+    left: var(--hint-left);
+    line-height: 1.3;
+    min-height: 0;
+    padding: 0;
+    position: absolute;
+    text-align: left;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 4px rgba(0, 0, 0, .6);
+    width: var(--hint-width);
+  }
   .hint.prompt { font-size: .95rem; }
-  .action-buttons { align-items: stretch; flex-direction: column; flex-wrap: nowrap; }
-  .action-buttons .btn { flex: 0 0 auto; }
-  /* 右邊一欄只有 7.4rem 寬，字照樣放大，左右留白縮小 */
-  .claim-button { font-size: 1.25rem; min-width: 0; padding: .45rem .5rem; }
+  /* 按鈕靠右下，一排放不下時往上多一排 */
+  .action-buttons {
+    align-items: flex-end;
+    bottom: var(--act-bottom);
+    flex-wrap: wrap-reverse;
+    gap: .35rem;
+    justify-content: flex-end;
+    position: absolute;
+    right: var(--act-right);
+    width: var(--act-width);
+  }
+  .action-buttons .btn { flex: 0 0 auto; pointer-events: auto; }
+  .claim-button { font-size: 1.2rem; min-width: 2.8rem; padding: .3rem .6rem; }
 }

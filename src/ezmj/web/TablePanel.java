@@ -20,6 +20,7 @@ import ezmj.model.Tile;
 /**
  * 牌桌主畫面：中間是牌桌，下方是動作列，右側是計分板、紀錄與聊天。多人遊戲不能電腦代打，所以沒有那顆按鈕。
  * 紀錄一律預設收成一行，空出來的地方給聊天，對應 Swing 版的同名類別。
+ * 手機橫向時動作列蓋在牌桌上：提示在左下、按鈕在右下、選單與全螢幕在右上角，位置由牌桌算好。
  */
 final class TablePanel {
 
@@ -61,17 +62,21 @@ final class TablePanel {
         HTMLElement main = Dom.el("div", "table-main");
         main.appendChild(canvas.element());
         HTMLElement actionBar = Dom.el("div", "action-bar");
+        // 手機直向時兩顆按鈕分在動作列左右上角，橫向時一起浮在牌桌右上角
+        HTMLElement corner = Dom.el("div", "corner-buttons");
         menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
         menu.setClassName("btn menu-button");
-        actionBar.appendChild(menu);
+        corner.appendChild(menu);
         if (Browser.canFullscreen()) {
             HTMLElement fullscreen = Dom.button("全螢幕", Theme.PANEL_LIGHT, Browser::toggleFullscreen);
             fullscreen.setClassName("btn fullscreen-button");
-            actionBar.appendChild(fullscreen);
+            corner.appendChild(fullscreen);
         }
+        actionBar.appendChild(corner);
         actionBar.appendChild(hint);
         actionBar.appendChild(actionButtons);
         main.appendChild(actionBar);
+        canvas.setOverlay(actionBar);
         root.appendChild(main);
         shade.addEventListener("click", event -> showDrawer(false));
         root.appendChild(shade);

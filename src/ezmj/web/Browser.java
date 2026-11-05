@@ -85,6 +85,10 @@ final class Browser {
     @JSBody(script = "return window.matchMedia('(max-width: 900px), (max-height: 560px)').matches;")
     static native boolean isCompact();
 
+    /** 手機橫向：提示、按鈕與選單浮在牌桌上，名字移到各家旁邊。條件要和 style.css 的橫向版面一樣。 */
+    @JSBody(script = "return window.matchMedia('(max-height: 560px) and (orientation: landscape)').matches;")
+    static native boolean isLandscapeCompact();
+
     @JSBody(script = "return 'ontouchstart' in window;")
     static native boolean isTouchDevice();
 

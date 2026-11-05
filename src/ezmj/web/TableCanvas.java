@@ -108,6 +108,27 @@ final class TableCanvas {
     private static final double LINE_MARGIN_SLOTS = .75;
     /** 手機的高倍率螢幕整桌重畫很吃力，超過這個倍率肉眼也看不太出差別。 */
     private static final double MAX_PIXEL_RATIO = 2;
+    /**
+     * 手機橫向的版面：高度最缺，名字移到各家旁邊，中央只剩圈風、張數與牌牆，棄牌才放得大。
+     * 上下兩家的棄牌每排 12 張、排兩排；左右兩家每排 4 張往兩側排。左右兩家一排的長度不超過棄牌離中心的距離，
+     * 才不會撞到上下兩家的棄牌，所以上下兩家可以往左右排得很寬。單位是 tableUnit。
+     */
+    private static final double WIDE_BOX_HALF = 38;
+    private static final double WIDE_WALL_TOP = 42;
+    private static final double WIDE_WALL_DEPTH = 9;
+    private static final double WIDE_DISCARD_TOP = 53;
+    private static final int WIDE_COLUMNS_ACROSS = 12;
+    private static final int WIDE_COLUMNS_SIDE = 4;
+    private static final int WIDE_ROWS_ACROSS = 2;
+    private static final int WIDE_ROWS_SIDE = 6;
+    /** 橫向時自己的手牌排滿整個寬度，但牌高最多佔牌桌高度的這個比例。 */
+    private static final double WIDE_HAND_HEIGHT = .19;
+    /** 橫向時名字標籤的寬度上限與高度，單位是 unit。 */
+    private static final double WIDE_LABEL_W = 132;
+    private static final double WIDE_LABEL_H = 22;
+    /** 橫向時寫給動作列的 CSS 變數，順序和 syncOverlay 算的值一樣。 */
+    private static final String[] OVERLAY_VARS = {
+        "--hint-left", "--hint-bottom", "--hint-width", "--act-right", "--act-bottom", "--act-width"};
 
     private record Point(double x, double y) {
     }
@@ -149,6 +170,22 @@ final class TableCanvas {
         /** 從右端數過來第 column 墩的左邊。 */
         double stackX(int column) {
             return top + depth - (column + 1) * stackW + (stackW - tileW) / 2;
+        }
+    }
+
+    /** 一家的花牌列，該家視角。牌寬 w，相鄰兩張的間距 step，放不下時 step 比 w 小，牌會疊住。 */
+    private record FlowerRow(double x, double y, double w, double h, double step) {
+    }
+
+    /**
+     * 橫向時一家的名字與花牌排成一條，螢幕座標，正著擺。名字標籤在 x 到 x + w，fontSize 是縮過、放得進去的字型大小。
+     * 第 i 張花牌的左邊是 flowerX(i)：從 flowerStart 往 direction 那邊排，間距 step，放不下時比牌寬小，牌會疊住。
+     */
+    private record NameStrip(double x, double y, double w, double h, String text, double fontSize, boolean listening,
+                             double flowerStart, double flowerY, double flowerW, double flowerH, double step,
+                             int direction) {
+        double flowerX(int index) {
+            return direction > 0 ? flowerStart + index * step : flowerStart - flowerW - index * step;
         }
     }
 
@@ -208,6 +245,11 @@ final class TableCanvas {
     private int raisedBeforeTouch = -1;
     /** 手機版面：牌桌上沒有計分板，籌碼要標在名字旁邊。 */
     private boolean compact;
+    /** 手機橫向的版面，見 WIDE_BOX_HALF。 */
+    private boolean wide;
+    /** 橫向時浮在牌桌上的提示與按鈕，位置用 CSS 變數告訴它。 */
+    private HTMLElement overlay;
+    private String overlayStyle = "";
     private double frameNow;
     /** 擲骰子開始的時間，發牌在 DICE_MS 之後。0 表示沒有在演。 */
     private double dealStart;
@@ -256,6 +298,11 @@ final class TableCanvas {
 
     HTMLElement element() {
         return host;
+    }
+
+    /** 動作列。手機橫向時它蓋在牌桌上，提示與按鈕要放在牌桌留給它們的地方。 */
+    void setOverlay(HTMLElement overlay) {
+        this.overlay = overlay;
     }
 
     void setRound(RoundView round, Dice dice) {
@@ -345,11 +392,16 @@ final class TableCanvas {
 
     private WallLayout wallLayout() {
         double unit = tableUnit();
-        double top = WALL_TOP * unit;
-        double depth = WALL_DEPTH * unit;
+        double top = wallTop() * unit;
+        double depth = (wide ? WIDE_WALL_DEPTH : WALL_DEPTH) * unit;
         double stackW = (top * 2 + depth) / WallRing.STACKS_PER_SIDE;
         double lift = depth * .24;
         return new WallLayout(top, depth, stackW, stackW * .9, depth - lift, lift);
+    }
+
+    /** 牌牆離中心多遠，單位是 tableUnit。 */
+    private double wallTop() {
+        return wide ? WIDE_WALL_TOP : WALL_TOP;
     }
 
     /** 第 stack 墩的中心點，以牌桌中心為原點。 */
@@ -505,6 +557,7 @@ final class TableCanvas {
     private void syncSize() {
         int nextW = host.getClientWidth();
         int nextH = host.getClientHeight();
+        wide = Browser.isLandscapeCompact();
         double ratio = pixelRatio();
         if (nextW != width || nextH != height || canvas.getWidth() != (int) (nextW * ratio)) {
             width = nextW;
@@ -524,16 +577,43 @@ final class TableCanvas {
         return Math.max(shortSide / 720.0, Math.min(shortSide / 480.0, .8));
     }
 
-    /** 中央方框與棄牌區跟著牌放大，但至少要留得下三排棄牌，不能撞到自己的手牌。 */
+    /**
+     * 中央方框與棄牌區跟著牌放大，但至少要留得下三排棄牌，不能撞到自己的手牌。
+     * 橫向時用滿空間：上下兩家的兩排棄牌放得進牌桌中心到手牌之間，左右兩家的六排與花牌放得進左右兩邊。
+     */
     private double tableUnit() {
         double unit = unit();
+        if (wide) {
+            double across = sideRoom() / (WIDE_DISCARD_TOP + WIDE_ROWS_ACROSS * DISCARD_H + 3);
+            double side = (width / 2.0 - botRowDepth()) / (WIDE_DISCARD_TOP + WIDE_ROWS_SIDE * DISCARD_H + FLOWER_H + 10);
+            return Math.max(unit * .5, Math.min(across, side));
+        }
         double room = (height / 2.0 - humanRowDepth()) / unit;
         double fit = room / (DISCARD_TOP + DISCARD_ROWS_TO_FIT * DISCARD_H);
         return unit * Math.max(1, Math.min(Math.min(Theme.tileScale(), MAX_TABLE_SCALE), fit));
     }
 
     private double preferredTileW(int seat) {
-        return (seat == 0 ? 54 : 32) * unit() * Theme.tileScale();
+        double base = (seat == 0 ? 54 : 32) * unit();
+        if (seat == 0 && wide) {
+            // 橫向時右邊沒有動作列，手牌排滿整個寬度，但不能高到擠掉棄牌
+            base = Math.max(base, Math.min(width * .98 / MIN_ROW_SLOTS, height * WIDE_HAND_HEIGHT / TILE_RATIO));
+        }
+        return base * Theme.tileScale();
+    }
+
+    /** 牌桌中心。橫向時上面對家的牌比較薄、下面自己的手牌比較厚，中心往上挪，上下兩家的棄牌才一樣大。 */
+    private double centerX() {
+        return width / 2.0;
+    }
+
+    private double centerY() {
+        return wide ? botRowDepth() + sideRoom() : height / 2.0;
+    }
+
+    /** 橫向時牌桌中心到上下兩家手牌的距離。 */
+    private double sideRoom() {
+        return Math.max(0, (height - humanRowDepth() - botRowDepth()) / 2);
     }
 
     /** 直向的手機寬度不夠，但高度用不完，所以手牌分兩排，牌才夠大。 */
@@ -579,7 +659,8 @@ final class TableCanvas {
 
     /** 左右兩家的牌往上挪，避開比較厚的自家手牌。座標方向相反，所以兩家的正負號也相反。 */
     private double rowShift(int seat) {
-        if (seat % 2 == 0) {
+        // 橫向時牌桌中心已經挪到兩者中間
+        if (seat % 2 == 0 || wide) {
             return 0;
         }
         double shift = (humanRowDepth() - botRowDepth()) / 2;
@@ -593,8 +674,15 @@ final class TableCanvas {
         return Math.min(preferredTileW(seat), rowStep(seat, slots) * MAX_OVERLAP);
     }
 
+    /** 牌桌中心到這家那一邊的距離。 */
     private double halfDepth(int seat) {
-        return (seat % 2 == 0 ? height : width) / 2.0;
+        if (seat % 2 == 1) {
+            return width / 2.0;
+        }
+        if (!wide) {
+            return height / 2.0;
+        }
+        return seat == 0 ? height - centerY() : centerY();
     }
 
     private static double seatAngle(int seat) {
@@ -627,14 +715,31 @@ final class TableCanvas {
         return Math.max(DISCARD_COLUMNS, Math.min((DISCARDS_TO_FIT + rows - 1) / rows, fits));
     }
 
+    /** 這家的棄牌每排幾張。橫向時上下兩家 12 張、左右兩家 4 張。 */
+    private int discardColumnsFor(int seat) {
+        if (wide) {
+            return seat % 2 == 0 ? WIDE_COLUMNS_ACROSS : WIDE_COLUMNS_SIDE;
+        }
+        return discardColumns(seat);
+    }
+
+    /** 第一張棄牌的左邊，該家視角。橫向時每排置中；平常起點固定，張數多時往右延伸。 */
+    private double discardLeft(int seat, double tileW) {
+        return -tileW * (wide ? discardColumnsFor(seat) : DISCARD_COLUMNS) / 2;
+    }
+
+    private double discardTop(double unit) {
+        return (wide ? WIDE_DISCARD_TOP : DISCARD_TOP) * unit;
+    }
+
     /** 這家第 index 張棄牌的中心點，該家視角。 */
     private Point discardCenter(int seat, int index) {
         double unit = tableUnit();
         double w = DISCARD_W * unit;
         double h = DISCARD_H * unit;
-        int columns = discardColumns(seat);
-        return new Point(-w * DISCARD_COLUMNS / 2 + (index % columns) * w + w / 2,
-                DISCARD_TOP * unit + (index / columns) * h + h / 2);
+        int columns = discardColumnsFor(seat);
+        return new Point(discardLeft(seat, w) + (index % columns) * w + w / 2,
+                discardTop(unit) + (index / columns) * h + h / 2);
     }
 
     /** 打出的牌從手牌飛到棄牌區。真人從點的那張牌起飛，電腦從手牌中間起飛。 */
@@ -647,8 +752,8 @@ final class TableCanvas {
         if (seat == 0) {
             for (HandHit hit : hits) {
                 if (hit.tile().equals(event.tile())) {
-                    fromX = hit.centerX() - width / 2.0;
-                    fromY = hit.y() + hit.h() / 2 - height / 2.0;
+                    fromX = hit.centerX() - centerX();
+                    fromY = hit.y() + hit.h() / 2 - centerY();
                 }
             }
         }
@@ -724,14 +829,25 @@ final class TableCanvas {
         int seat = event.seat();
         int index = round.player(seat).flowers().size() - 1;
         RowLayout row = layoutRow(seat, separatedTile(seat, false));
-        double unit = tableUnit();
-        double w = FLOWER_W * unit;
-        double h = FLOWER_H * unit;
         double middle = row.x() + Math.min(row.total(), row.wrapAt()) / 2;
         Point from = toTable(seat, middle, row.y() + row.tileH() / 2);
-        Point to = toTable(seat, flowersX(seat, row) + index * w + w / 2, row.y() - 6 * unit - h / 2);
+        Point to;
+        double toAngle = seatAngle(seat);
+        double toW;
+        if (wide) {
+            // 橫向時花牌在名字旁邊，正著擺
+            NameStrip strip = nameStrip(seat);
+            to = new Point(strip.flowerX(index) + strip.flowerW() / 2 - centerX(),
+                    strip.flowerY() + strip.flowerH() / 2 - centerY());
+            toAngle += Math.IEEEremainder(-toAngle, Math.PI * 2);
+            toW = strip.flowerW();
+        } else {
+            FlowerRow flowers = flowerRow(seat, row);
+            to = toTable(seat, flowers.x() + index * flowers.step() + flowers.w() / 2, flowers.y() + flowers.h() / 2);
+            toW = flowers.w();
+        }
         flights.add(new Flight(event.tile(), false, from.x(), from.y(), seatAngle(seat), row.tileW(),
-                to.x(), to.y(), seatAngle(seat), w - 1, Browser.now(), FLOWER_FLIGHT_MS,
+                to.x(), to.y(), toAngle, toW - 1, Browser.now(), FLOWER_FLIGHT_MS,
                 Slot.FLOWER, seat, index));
         addSeatBanner(seat, "補花", 34 * unit(), FLOWER_BANNER_MS);
     }
@@ -819,8 +935,8 @@ final class TableCanvas {
         Gfx g = new Gfx(context, ratio);
         paintFelt(g);
         if (round != null) {
-            double cx = width / 2.0;
-            double cy = height / 2.0;
+            double cx = centerX();
+            double cy = centerY();
             hits.clear();
             double[] base = g.transform();
             for (int seat = 0; seat < 4; seat++) {
@@ -830,6 +946,10 @@ final class TableCanvas {
                 paintSeat(g, seat);
             }
             g.setTransform(base);
+            if (wide) {
+                paintNameStrips(g);
+                syncOverlay();
+            }
             g.translate(cx, cy);
             paintCenterText(g, tableUnit());
             paintDice(g, tableUnit());
@@ -1046,7 +1166,10 @@ final class TableCanvas {
     private void paintSeat(Gfx g, int seat) {
         Player player = round.player(seat);
         double tableUnit = tableUnit();
-        paintSeatLabel(g, seat, player, tableUnit);
+        // 橫向時名字不在中央方框四邊，另外標在各家旁邊
+        if (!wide) {
+            paintSeatLabel(g, seat, player, tableUnit);
+        }
         paintWall(g, seat);
         paintDiscards(g, seat, player, tableUnit);
         paintRow(g, player, seat);
@@ -1131,7 +1254,7 @@ final class TableCanvas {
         for (int i = 0; i < faces.length; i++) {
             double toX = (i - 1) * size * 1.3;
             double toY = -8 * unit;
-            Point from = toTable(round.dealer(), toX * .8, (WALL_TOP - 20) * unit);
+            Point from = toTable(round.dealer(), toX * .8, (wallTop() - 20) * unit);
             double x = from.x() + (toX - from.x()) * eased;
             double y = from.y() + (toY - from.y()) * eased;
             double hop = roll < 1 ? Math.abs(Math.sin(Math.PI * (2 + i) * eased)) * (1 - eased) : 0;
@@ -1234,9 +1357,9 @@ final class TableCanvas {
     private void paintDiscards(Gfx g, int seat, Player player, double unit) {
         double tileW = DISCARD_W * unit;
         double tileH = DISCARD_H * unit;
-        int columns = discardColumns(seat);
-        double startX = -tileW * DISCARD_COLUMNS / 2;
-        double startY = DISCARD_TOP * unit;
+        int columns = discardColumnsFor(seat);
+        double startX = discardLeft(seat, tileW);
+        double startY = discardTop(unit);
         List<Tile> discards = player.discards();
         boolean lastHidden = flying(Slot.DISCARD, seat, -1);
         for (int i = 0; i < discards.size(); i++) {
@@ -1290,7 +1413,6 @@ final class TableCanvas {
         double step = row.step();
         double gap = row.gap();
         double x = row.x();
-        double y = row.y();
 
         for (int m = 0; m < player.melds().size(); m++) {
             Meld meld = player.melds().get(m);
@@ -1330,8 +1452,9 @@ final class TableCanvas {
         if (seat == 0 && discardPrompt && !finished) {
             paintPromptGlow(g, row);
         }
-        if (!dealing()) {
-            paintFlowers(g, player, flowersX(seat, row), y, tableUnit());
+        // 橫向時花牌和名字畫在一起，見 paintNameStrips
+        if (!dealing() && !wide) {
+            paintFlowers(g, player, flowerRow(seat, row));
         }
     }
 
@@ -1360,8 +1483,16 @@ final class TableCanvas {
         return Math.max(row.x(), -halfLength + inset);
     }
 
+    /** 花牌列，該家視角，排在手牌前面靠左手邊。橫向時花牌改到名字旁邊，見 nameStrip。 */
+    private FlowerRow flowerRow(int seat, RowLayout row) {
+        double unit = tableUnit();
+        double w = FLOWER_W * unit;
+        double h = FLOWER_H * unit;
+        return new FlowerRow(flowersX(seat, row), row.y() - h - 6 * unit, w, h, w);
+    }
+
     private void addHit(double x, double y, double w, double h, Tile tile) {
-        hits.add(new HandHit(x + width / 2.0, y + height / 2.0, Math.ceil(w), Math.ceil(h), tile));
+        hits.add(new HandHit(x + centerX(), y + centerY(), Math.ceil(w), Math.ceil(h), tile));
     }
 
     /**
@@ -1432,22 +1563,18 @@ final class TableCanvas {
         }
     }
 
-    private void paintFlowers(Gfx g, Player player, double x, double rowY, double unit) {
-        double w = FLOWER_W * unit;
-        double h = FLOWER_H * unit;
-        double y = rowY - h - 6 * unit;
+    private void paintFlowers(Gfx g, Player player, FlowerRow row) {
         List<Tile> flowers = player.flowers();
         for (int i = 0; i < flowers.size(); i++) {
             if (!flying(Slot.FLOWER, player.seat(), i)) {
-                TilePainter.paintFace(g, flowers.get(i), x, y, w - 1, h);
+                TilePainter.paintFace(g, flowers.get(i), row.x() + i * row.step(), row.y(), row.w() - 1, row.h());
             }
-            x += w;
         }
     }
 
     /** 中央方框的圈風與剩餘張數。擲骰子時骰子在方框上，字先藏起來，骰子淡出時再淡入。 */
     private void paintCenterText(Gfx g, double unit) {
-        double half = 70 * unit;
+        double half = (wide ? WIDE_BOX_HALF : 70) * unit;
         g.color("rgba(0,0,0,.431)");
         g.fillRoundRect(-half, -half, half * 2, half * 2, 12 * unit);
         double textAlpha = 1 - diceAlpha();
@@ -1473,8 +1600,143 @@ final class TableCanvas {
         }
         drawCenteredLine(g, label, -14 * unit);
         g.color(Theme.TEXT);
-        g.font(Theme.font(false, 16 * unit));
-        drawCenteredLine(g, "剩餘 " + (round.liveTiles() + undealtTiles()) + " 張", 22 * unit);
+        double countSize = 16 * unit;
+        String count = "剩餘 " + (round.liveTiles() + undealtTiles()) + " 張";
+        g.font(Theme.font(false, countSize));
+        // 橫向的方框比較小，這一行也可能超出去
+        double countWidth = g.textWidth(count);
+        if (countWidth > maxWidth) {
+            g.font(Theme.font(false, countSize * maxWidth / countWidth));
+        }
+        drawCenteredLine(g, count, 22 * unit);
+    }
+
+    /**
+     * 橫向時各家的名字與花牌排成一條，螢幕座標，都避開棄牌：自己的在手牌左上方；對家的在對家手牌下面靠左，
+     * 左家的再下面一條；右家的在右上角、選單下面，靠右對齊，花牌排在名字左邊。名字放不下就縮小字，花牌放不下就疊起來。
+     */
+    private NameStrip nameStrip(int seat) {
+        double u = unit();
+        double k = tableUnit();
+        double side = botRowDepth();
+        double gap = 6 * u;
+        double cx = centerX();
+        double across = -discardLeft(0, DISCARD_W * k);
+        double labelH = WIDE_LABEL_H * u;
+        double flowerW = FLOWER_W * k;
+        double flowerH = FLOWER_H * k;
+        double lineH = Math.max(labelH, flowerH);
+        double left;
+        double right;
+        double lineTop;
+        if (seat == 1) {
+            left = cx + across + gap;
+            right = width - side - gap;
+        } else {
+            left = side + gap;
+            right = cx - across - gap;
+        }
+        if (seat == 0) {
+            lineH = flowerH;
+            lineTop = height - humanRowDepth() - 6 * k - flowerH;
+        } else if (seat == 3) {
+            lineTop = side + 3 * u + lineH + 3 * u;
+        } else {
+            lineTop = side + 3 * u;
+        }
+        Player player = round.player(seat);
+        String text = (round.dealer() == seat ? "莊 " : "") + Tile.windName(round.seatWind(seat)) + "  "
+                + player.name() + "  " + player.chips();
+        boolean listening = round.isListening(seat);
+        double pad = 5 * u;
+        double badge = listening ? 24 * u : 0;
+        // 名字最多用掉六成，留地方給花牌
+        double maxW = Math.max(0, Math.min(WIDE_LABEL_W * u, (right - left) * .62));
+        double size = 13 * u;
+        context.setFont(Theme.font(true, size));
+        double textW = context.measureText(text).getWidth();
+        double fits = maxW - pad * 2 - badge;
+        if (textW > fits) {
+            size *= Math.max(0, fits) / textW;
+            textW = Math.max(0, fits);
+        }
+        double w = Math.min(maxW, textW + pad * 2 + badge);
+        double x = seat == 1 ? right - w : left;
+        int direction = seat == 1 ? -1 : 1;
+        double flowerStart = seat == 1 ? x - gap : x + w + gap;
+        double room = seat == 1 ? flowerStart - left : right - flowerStart;
+        int count = player.flowers().size();
+        double step = flowerW;
+        if (count > 1 && count * flowerW > room) {
+            step = Math.max(flowerW * .35, (room - flowerW) / (count - 1));
+        }
+        return new NameStrip(x, lineTop + (lineH - labelH) / 2, w, labelH, text, size, listening,
+                flowerStart, lineTop + (lineH - flowerH) / 2, flowerW, flowerH, step, direction);
+    }
+
+    /** 名字標籤，輪到的一家亮起，報聽的在右端標「聽」；旁邊是花牌，發牌時還沒補花，先不畫。 */
+    private void paintNameStrips(Gfx g) {
+        double u = unit();
+        for (int seat = 0; seat < 4; seat++) {
+            NameStrip strip = nameStrip(seat);
+            if (!dealing()) {
+                List<Tile> flowers = round.player(seat).flowers();
+                for (int i = 0; i < flowers.size(); i++) {
+                    if (!flying(Slot.FLOWER, seat, i)) {
+                        TilePainter.paintFace(g, flowers.get(i), strip.flowerX(i), strip.flowerY(),
+                                strip.flowerW() - 1, strip.flowerH());
+                    }
+                }
+            }
+            if (strip.w() <= 0 || strip.fontSize() < 4) {
+                continue;
+            }
+            boolean active = round.phase() == Round.Phase.TURN && round.current() == seat;
+            g.color(active ? Theme.GOLD : "rgba(0,0,0,.45)");
+            g.fillRoundRect(strip.x(), strip.y(), strip.w(), strip.h(), 6 * u);
+            g.font(Theme.font(true, strip.fontSize()));
+            g.color(active ? "#000000" : Theme.TEXT);
+            double badge = strip.listening() ? 24 * u : 0;
+            g.drawCentered(strip.text(), strip.x() + (strip.w() - badge) / 2, strip.y() + strip.h() / 2);
+            if (strip.listening()) {
+                paintListenBadge(g, strip.x() + strip.w() - 13 * u, strip.y() + strip.h() / 2, 9.5 * u,
+                        listenProgress(seat));
+            }
+        }
+    }
+
+    /**
+     * 橫向時把提示與按鈕的位置寫進動作列的 CSS 變數，螢幕座標，style.css 照著放。
+     * 提示在自己手牌左上方、花牌與名字上面；按鈕在右上方，避開右家的手牌與抬起來的手牌。兩邊都不壓到棄牌。
+     */
+    private void syncOverlay() {
+        if (overlay == null) {
+            return;
+        }
+        double u = unit();
+        double k = tableUnit();
+        double side = botRowDepth();
+        double gap = 6 * u;
+        double cx = centerX();
+        double across = -discardLeft(0, DISCARD_W * k);
+        double flowers = (6 + FLOWER_H) * k;
+        double lift = rowTileW(0, MIN_ROW_SLOTS) * TILE_RATIO * .16;
+        double hintLeft = side + gap;
+        double actRight = side + gap;
+        double[] values = {hintLeft, humanRowDepth() + flowers + 4 * u, cx - across - gap - hintLeft,
+            actRight, humanRowDepth() + lift + 2 * u, width - actRight - (cx + across + gap)};
+        StringBuilder key = new StringBuilder();
+        for (double value : values) {
+            key.append(Math.max(0, Math.round(value))).append(',');
+        }
+        if (key.toString().equals(overlayStyle)) {
+            return;
+        }
+        overlayStyle = key.toString();
+        // 網頁的 CSP 不准用 style 屬性，要經過 CSSOM 設定
+        for (int i = 0; i < OVERLAY_VARS.length; i++) {
+            overlay.getStyle().setProperty(OVERLAY_VARS[i], Math.max(0, Math.round(values[i])) + "px");
+        }
     }
 
     /** 圈風加局風，例如「東風東局」「南風西局」。舊服務器沒有送局風時是原本的「東風圈」。牌桌中間與右側都用這個。 */
