@@ -18,7 +18,7 @@ concurrency:
 env:
   # 牌與局面翻譯直接編譯 ezmj 的原始碼，固定在這個 commit，更新 ezmj 不會改到網頁。
   # 要跟上新版就改這個值，並更新 README 記的「對應的畫面」。
-  EZMJ_COMMIT: 1c9598acf6ca42e7531197c5f4c341c3ed9eb16e
+  EZMJ_COMMIT: cba0d5f80d5a972837c1499cb5a22a1531a90cad
 
 jobs:
   build:

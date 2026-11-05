@@ -4,6 +4,8 @@
 
 ## 未發布
 
+## 0.6.0 - 2026-11-05
+
 ### 新增
 
 - 授權：AGPL-3.0 與商業授權的雙重授權。全文在 `LICENSE`，說明在 README 的「授權」，貢獻的規則在 `CONTRIBUTING.md`。網頁的 `index.html` 也標上著作權與授權。
@@ -20,8 +22,8 @@
 - 右側的「紀錄」一律預設收起來。「收合」「展開」的文字按鈕換成 CSS 畫的箭頭，朝下是展開、朝上是收合，有 `title`、`aria-label` 與 `aria-expanded`。
 - 跟電腦打的一人房間也有聊天，連線的牌桌都有。
 - 棄牌往外挪到牌牆外面。手機直向時左右兩家的棄牌排成一排的機會變多。
-- 要搭配有 `Dice`、`WallRing` 與 `OnlineGame.dice` 的 `ezmj`：`.github/workflows/pages.yml` 的 `EZMJ_COMMIT` 改成 `ezmj` 的 `1c9598a`，push 這裡之前要先把那個 commit push 上去。
-- 對應 Swing 版 `ezmj` 0.8.0 之後還沒發布的畫面。
+- 要搭配有 `Dice`、`WallRing` 與 `OnlineGame.dice` 的 `ezmj`：`.github/workflows/pages.yml` 的 `EZMJ_COMMIT` 改成 `ezmj` 0.9.0 的 commit `cba0d5f`。
+- 對應 Swing 版 `ezmj` 0.9.0 的畫面。
 
 ## 0.5.0 - 2026-11-05
 
