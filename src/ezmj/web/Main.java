@@ -146,6 +146,11 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
     }
 
     @Override
+    public void honorRoll(String name) {
+        new HonorRollDialog(serverUrl, name).show();
+    }
+
+    @Override
     public void showRoom(RoomPanel room) {
         form.stopLobby();
         show(room.element());

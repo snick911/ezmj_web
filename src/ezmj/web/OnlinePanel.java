@@ -3,6 +3,7 @@ package ezmj.web;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.teavm.jso.dom.events.KeyboardEvent;
 import org.teavm.jso.dom.html.HTMLButtonElement;
 import org.teavm.jso.dom.html.HTMLElement;
 import org.teavm.jso.dom.html.HTMLInputElement;
@@ -17,6 +18,7 @@ import ezmj.online.RoomSettings;
 /**
  * 網頁的入口，也就是大廳：輸入名字，從公開的房間挑一間加入、用房號加入（私人房間要用）、開房間或跟電腦打；
  * 牌局中斷過的話也能接回去。服務器是固定的。看得到這個畫面時才去要房間列表。
+ * 房間列表佔大部分的畫面；開房間與跟電腦打的設定按了按鈕才跳出來，選好再送出。
  */
 final class OnlinePanel implements LobbyBrowser.View {
 
@@ -28,8 +30,8 @@ final class OnlinePanel implements LobbyBrowser.View {
     private static final int[] BASE_OPTIONS = {50, 100, 300, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000};
     private static final int[] TAI_OPTIONS = {10, 20, 50, 100, 200, 5_000, 10_000, 50_000, 100_000, 200_000, 500_000,
             1_000_000};
-    private static final String[] COLUMNS = {"房間名稱", "房主", "人數", "籌碼／底／台", "等待"};
-    /** 每一欄另外加的樣式，手機放不下時藏掉等待秒數。 */
+    private static final String[] COLUMNS = {"房間名稱", "房主", "人數", "籌碼／底／台", "等待秒數"};
+    /** 每一欄另外加的樣式，很窄的手機放不下時藏掉等待秒數。 */
     private static final String[] COLUMN_CLASSES = {"name", "host", "", "", "wait"};
     private static final String LOADING = "正在讀取房間列表，服務器閒置後第一次可能要等一分鐘…";
 
@@ -48,6 +50,9 @@ final class OnlinePanel implements LobbyBrowser.View {
         void settings();
 
         void help();
+
+        /** name 是目前填的名字，榜上同名的會標出來，可能是空的。 */
+        void honorRoll(String name);
     }
 
     private final Actions actions;
@@ -76,6 +81,15 @@ final class OnlinePanel implements LobbyBrowser.View {
     private final HTMLButtonElement cancelButton;
     private final HTMLElement status = Dom.text("div", "status", " ");
     private final HTMLElement stakesHint = Dom.text("div", "notice", " ");
+    /** 開房間與跟電腦打的設定，跳出來的視窗每次都放這一份，選過的值留著。 */
+    private final HTMLElement setupForm = Dom.el("div", "setup-form");
+    private HTMLElement roomNameRow;
+    private HTMLElement privateRow;
+    private final HTMLButtonElement setupConfirm;
+    /** 跳出來的設定視窗，沒有開著就是 null。 */
+    private Dialog setupDialog;
+    /** 設定視窗是跟電腦打的，不是開房間。 */
+    private boolean setupSolo;
     private final LobbyBrowser lobby;
     private List<RoomListing> rooms = List.of();
     /** 和 rooms 同樣的順序。 */
@@ -90,22 +104,22 @@ final class OnlinePanel implements LobbyBrowser.View {
         for (int i = 0; i < 3; i++) {
             levelBoxes.add(levelSelect());
         }
-        // 跟電腦打的房間一定是私人的，不然打完回到房間時別人會從大廳加進來
-        soloButton = Dom.button("跟電腦打", Theme.RED, () -> actions.playBots(name(), settings(true)));
-        createButton = Dom.button("開房間", Theme.RED, () -> actions.create(name(), settings(false)));
+        soloButton = Dom.button("跟電腦打", Theme.RED, () -> openSetup(true));
+        createButton = Dom.button("開房間", Theme.RED, () -> openSetup(false));
+        setupConfirm = Dom.button(" ", Theme.RED, this::confirmSetup);
         joinButton = Dom.button("加入房間", Theme.RED, () -> actions.join(name(), code()));
         listJoinButton = Dom.button("加入", Theme.RED, this::joinSelected);
         resumeButton = Dom.button("接回牌局", Theme.BUTTON, () -> actions.resume(profile));
         cancelButton = Dom.button("取消連線", Theme.PANEL_LIGHT, actions::cancel);
 
-        HTMLElement card = Dom.el("div", "card form-card");
+        HTMLElement card = Dom.el("div", "card lobby-card");
         card.appendChild(Dom.text("h1", "title", "EZMJ 台灣十六張麻將"));
-        HTMLElement columns = Dom.el("div", "form-columns");
-        columns.appendChild(buildLeft());
-        columns.appendChild(buildRight());
-        card.appendChild(columns);
+        card.appendChild(buildTop());
+        buildList(card);
+        buildBottom(card);
         card.appendChild(footer(version));
         root.appendChild(card);
+        buildSetupForm();
 
         nameField.addEventListener("input", event -> syncButtons());
         codeField.addEventListener("input", event -> syncButtons());
@@ -113,7 +127,7 @@ final class OnlinePanel implements LobbyBrowser.View {
             box.addEventListener("change", event -> syncButtons());
         }
         codeField.addEventListener("keydown", event -> {
-            if ("Enter".equals(((org.teavm.jso.dom.events.KeyboardEvent) event).getKey()) && !joinButton.isDisabled()) {
+            if ("Enter".equals(((KeyboardEvent) event).getKey()) && !joinButton.isDisabled()) {
                 joinButton.click();
             }
         });
@@ -140,54 +154,144 @@ final class OnlinePanel implements LobbyBrowser.View {
         return footer;
     }
 
-    private HTMLElement buildLeft() {
-        HTMLElement left = Dom.el("div", "form-column lobby-column");
-        addRow(left, "名字（最多 " + MAX_NAME_LENGTH + " 字）", nameField);
-        left.appendChild(soloButton);
+    /** 最上面一列：名字，旁邊是跟電腦打與開房間。窄的螢幕兩顆按鈕換到名字下面。 */
+    private HTMLElement buildTop() {
+        HTMLElement top = Dom.el("div", "lobby-top");
+        HTMLElement nameRow = addRow(top, "名字（最多 " + MAX_NAME_LENGTH + " 字）", nameField);
+        nameRow.setClassName("form-row name-row");
+        HTMLElement starts = Dom.el("div", "start-buttons");
+        starts.appendChild(soloButton);
+        starts.appendChild(createButton);
+        top.appendChild(starts);
+        return top;
+    }
+
+    /** 公開的房間：在線人數、列表與加入。列表把剩下的高度都用掉。 */
+    private void buildList(HTMLElement card) {
         HTMLElement listHeading = Dom.el("div", "list-heading");
         listHeading.appendChild(Dom.text("h2", "section", "公開的房間"));
         listHeading.appendChild(Dom.button("重新整理", Theme.BUTTON, this::refresh));
-        left.appendChild(listHeading);
+        card.appendChild(listHeading);
         activity.appendChild(onlineCount);
         activity.appendChild(playingCount);
         activity.setAttribute("title", "在線人數包含正在看大廳的人；進行中的牌局也包含私人房間與跟電腦打的");
         Dom.visible(activity, false);
-        left.appendChild(activity);
-        left.appendChild(roomList);
+        card.appendChild(activity);
+        card.appendChild(roomList);
         HTMLElement listFooter = Dom.el("div", "list-footer");
         listFooter.appendChild(listStatus);
         listFooter.appendChild(listJoinButton);
-        left.appendChild(listFooter);
-        left.appendChild(Dom.text("h2", "section", "用房號加入"));
-        addRow(left, "六碼房號", codeField);
-        left.appendChild(joinButton);
-        left.appendChild(resumeButton);
-        left.appendChild(cancelButton);
-        left.appendChild(status);
-        HTMLElement row = Dom.el("div", "side-row");
-        row.appendChild(Dom.button("環境設定", Theme.PANEL_LIGHT, actions::settings));
-        row.appendChild(Dom.button("說明", Theme.PANEL_LIGHT, actions::help));
-        left.appendChild(row);
-        return left;
+        card.appendChild(listFooter);
     }
 
-    private HTMLElement buildRight() {
-        HTMLElement right = Dom.el("div", "form-column");
-        right.appendChild(Dom.text("h2", "section", "或開一間新房間"));
-        addRow(right, "房間名稱", roomNameField).setAttribute("title",
-                "最多 " + RoomSettings.MAX_NAME_LENGTH + " 字，空白就用預設的名稱");
-        addRow(right, "私人房間", privateBox).setAttribute("title", "不列在大廳，只能用房號加入");
-        addRow(right, "籌碼本金", chipBox);
-        addRow(right, "底", baseBox);
-        addRow(right, "每台", taiBox);
+    /** 用房號加入排成一列；接著是接回牌局、連線狀態與其他按鈕。 */
+    private void buildBottom(HTMLElement card) {
+        HTMLElement joinRow = Dom.el("div", "join-row");
+        HTMLElement codeLabel = Dom.el("label", "join-code");
+        codeLabel.appendChild(Dom.text("span", "section", "用房號加入"));
+        codeField.setAttribute("placeholder", "六碼房號");
+        codeField.setAttribute("aria-label", "六碼房號");
+        codeLabel.appendChild(codeField);
+        joinRow.appendChild(codeLabel);
+        joinRow.appendChild(joinButton);
+        card.appendChild(joinRow);
+        card.appendChild(resumeButton);
+        card.appendChild(cancelButton);
+        card.appendChild(status);
+        HTMLElement row = Dom.el("div", "side-row");
+        row.appendChild(Dom.button("榮譽榜", Theme.PANEL_LIGHT, () -> actions.honorRoll(name())));
+        row.appendChild(Dom.button("環境設定", Theme.PANEL_LIGHT, actions::settings));
+        row.appendChild(Dom.button("說明", Theme.PANEL_LIGHT, actions::help));
+        card.appendChild(row);
+    }
+
+    /** 跳出來的設定。房間名稱與私人房間只有開房間才有，跟電腦打一定是私人的一人房間。 */
+    private void buildSetupForm() {
+        roomNameRow = addRow(setupForm, "房間名稱", roomNameField);
+        roomNameRow.setAttribute("title", "最多 " + RoomSettings.MAX_NAME_LENGTH + " 字，空白就用預設的名稱");
+        privateRow = addRow(setupForm, "私人房間", privateBox);
+        privateRow.setAttribute("title", "不列在大廳，只能用房號加入");
+        addRow(setupForm, "籌碼本金", chipBox);
+        addRow(setupForm, "底", baseBox);
+        addRow(setupForm, "每台", taiBox);
+        // 三家電腦的等級排在同一列，依序是補位電腦 1、2、3；窄的螢幕放不下時三個選單換到標題下面
+        HTMLElement levels = Dom.el("div", "level-boxes");
         for (int i = 0; i < levelBoxes.size(); i++) {
-            addRow(right, "補位電腦 " + (i + 1) + " 的等級", levelBoxes.get(i));
+            HTMLSelectElement box = levelBoxes.get(i);
+            box.setAttribute("aria-label", "補位電腦 " + (i + 1) + " 的等級");
+            box.setAttribute("title", "補位電腦 " + (i + 1));
+            levels.appendChild(box);
         }
-        addRow(right, "等待秒數（" + RoomSettings.MIN_WAIT_SECONDS + " 到 " + RoomSettings.MAX_WAIT_SECONDS + "）", waitField);
-        addRow(right, "電腦速度", speedBox);
-        right.appendChild(stakesHint);
-        right.appendChild(createButton);
-        return right;
+        HTMLElement levelRow = addRow(setupForm, "補位電腦", levels);
+        levelRow.setClassName("form-row level-row");
+        levelRow.setAttribute("title", "依序是補位電腦 1、2、3，不到四人開局時由電腦補上");
+        addRow(setupForm, "等待秒數（" + RoomSettings.MIN_WAIT_SECONDS + " 到 " + RoomSettings.MAX_WAIT_SECONDS + "）",
+                waitField);
+        addRow(setupForm, "電腦速度", speedBox);
+        setupForm.appendChild(stakesHint);
+        // Esc 收起視窗；兩個文字框按 Enter 就送出，輸入法還在選字時不算
+        setupForm.addEventListener("keydown", event -> {
+            if ("Escape".equals(((KeyboardEvent) event).getKey())) {
+                closeSetup();
+            }
+        });
+        for (HTMLInputElement field : List.of(roomNameField, waitField)) {
+            field.addEventListener("keydown", event -> {
+                KeyboardEvent key = (KeyboardEvent) event;
+                if ("Enter".equals(key.getKey()) && !Browser.isComposing(key)) {
+                    key.preventDefault();
+                    confirmSetup();
+                }
+            });
+        }
+    }
+
+    /** 按了跟電腦打或開房間，先跳出設定，選好再送出。 */
+    private void openSetup(boolean solo) {
+        if (busy || !nameValid() || setupDialog != null) {
+            return;
+        }
+        setupSolo = solo;
+        Dom.visible(roomNameRow, !solo);
+        Dom.visible(privateRow, !solo);
+        setupConfirm.setInnerText(solo ? "開始牌局" : "開房間");
+        Dialog dialog = new Dialog(true);
+        dialog.card.setClassName("card setup-card");
+        dialog.card.appendChild(Dom.text("h2", "headline", solo ? "跟電腦打" : "開房間"));
+        dialog.card.appendChild(Dom.text("div", "muted", solo
+                ? "一人房間，由服務器補三家電腦，不列在大廳。"
+                : "開好之後把房號告訴朋友，或等大廳上的人加入；不到四人開局時由電腦補滿。"));
+        dialog.card.appendChild(setupForm);
+        HTMLElement buttons = Dom.el("div", "button-row");
+        buttons.appendChild(setupConfirm);
+        buttons.appendChild(Dom.button("取消", Theme.PANEL_LIGHT, this::closeSetup));
+        dialog.card.appendChild(buttons);
+        setupDialog = dialog;
+        syncButtons();
+        dialog.show();
+        (solo ? (HTMLElement) chipBox : roomNameField).focus();
+    }
+
+    private void closeSetup() {
+        if (setupDialog != null) {
+            setupDialog.close();
+            setupDialog = null;
+        }
+    }
+
+    /** 跟電腦打的房間一定是私人的，不然打完回到房間時別人會從大廳加進來。 */
+    private void confirmSetup() {
+        if (setupDialog == null || busy || !nameValid() || !stakesValid()) {
+            return;
+        }
+        boolean solo = setupSolo;
+        RoomSettings chosen = settings(solo);
+        closeSetup();
+        if (solo) {
+            actions.playBots(name(), chosen);
+        } else {
+            actions.create(name(), chosen);
+        }
     }
 
     private static HTMLElement addRow(HTMLElement parent, String label, HTMLElement field) {
@@ -404,8 +508,9 @@ final class OnlinePanel implements LobbyBrowser.View {
         boolean stakesValid = stakesValid();
         stakesHint.setInnerText(stakesValid ? " " : "底和每台不能大於籌碼本金。");
         Dom.visible(stakesHint, !stakesValid);
-        soloButton.setDisabled(!ready || !stakesValid);
-        createButton.setDisabled(!ready || !stakesValid);
+        soloButton.setDisabled(!ready);
+        createButton.setDisabled(!ready);
+        setupConfirm.setDisabled(!ready || !stakesValid);
         joinButton.setDisabled(!ready || code().length() != ROOM_CODE_LENGTH);
         listJoinButton.setDisabled(!ready || selectedCode == null);
         resumeButton.setDisabled(busy);

@@ -79,8 +79,13 @@ final class WebClient {
 
     /** 不登入，連上就要一次房間列表。沒有 token，所以斷線不重連，直接通知 closed；錯誤也照一般訊息通知。 */
     void browse() {
+        query(Messages.listRooms());
+    }
+
+    /** 和 browse 一樣不登入，連上就送 request，例如查榮譽榜。回應從 Listener.message 通知。 */
+    void query(Map<String, Object> request) {
         browsing = true;
-        open(Messages.listRooms());
+        open(request);
     }
 
     void listRooms() {

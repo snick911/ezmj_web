@@ -6,7 +6,9 @@ import java.util.Map;
 import ezmj.engine.WallRing;
 import ezmj.model.BotLevel;
 import ezmj.model.Dice;
+import ezmj.model.GameRecord;
 import ezmj.model.GameSpeed;
+import ezmj.model.HonorRoll;
 import ezmj.model.MusicTrack;
 import ezmj.model.Suit;
 import ezmj.model.Tile;
@@ -29,6 +31,7 @@ public final class AllTests {
     public static void main(String[] args) {
         protocolVersionFollowsSwingClient();
         messagesMatchServerReadme();
+        honorRollFollowsServerOrder();
         createRoomCarriesEveryOption();
         everyVoiceHasTheSameLength();
         voiceTextUsesTableNames();
@@ -70,6 +73,29 @@ public final class AllTests {
         same(Json.write(Messages.leave()), "{\"type\":\"leave\"}");
         same(Json.write(Messages.ping()), "{\"type\":\"ping\"}");
         same(Json.write(Messages.listRooms()), "{\"type\":\"listRooms\"}");
+        same(Json.write(Messages.honorRoll()), "{\"type\":\"honorRoll\"}");
+    }
+
+    /** 欄位照服務器 README 的 honorRoll。讀不懂的那筆略過，其他照樣列出；沒有的類別是空的。 */
+    @SuppressWarnings("unchecked")
+    private static void honorRollFollowsServerOrder() {
+        Map<String, Object> message = (Map<String, Object>) Json.parse("{\"type\":\"honorRoll\",\"wins\":["
+                + "{\"name\":\"小明\",\"date\":\"2026-11-04\",\"wins\":9,\"selfDraws\":2,\"winnings\":12400,\"dealIns\":1,"
+                + "\"botLevels\":[\"NORMAL\",\"PRO\",\"PRO\"],\"basePay\":100,\"taiPay\":20},"
+                + "{\"name\":\"壞掉的\",\"date\":\"2026-11-04\",\"wins\":\"很多\"},"
+                + "{\"name\":\"小花\",\"date\":\"2026-11-05\",\"wins\":9,\"selfDraws\":0,\"winnings\":-300,\"dealIns\":4,"
+                + "\"botLevels\":[\"BEGINNER\",\"BEGINNER\",\"BEGINNER\"],\"basePay\":50,\"taiPay\":10}],"
+                + "\"selfDraws\":[],\"winnings\":[]}");
+        Map<HonorRoll.Category, List<GameRecord>> roll = HonorRollMessage.parse(message);
+        List<GameRecord> wins = roll.get(HonorRoll.Category.WINS);
+        check(wins.size() == 2, "壞掉的那筆略過，剩兩筆，實際 " + wins.size());
+        same(wins.get(0).name(), "小明");
+        same(wins.get(1).name(), "小花");
+        check(wins.get(0).winnings() == 12400 && wins.get(0).taiPay() == 20, "數字照抄");
+        same(wins.get(0).botLevelsLabel(), "一般／職業／職業");
+        same(wins.get(1).botLevelsLabel(), "初學者");
+        check(roll.get(HonorRoll.Category.SELF_DRAWS).isEmpty(), "空的類別");
+        check(roll.get(HonorRoll.Category.DEAL_INS).isEmpty(), "沒送的類別也是空的");
     }
 
     private static void createRoomCarriesEveryOption() {

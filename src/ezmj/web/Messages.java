@@ -52,6 +52,11 @@ final class Messages {
         return object("type", "listRooms");
     }
 
+    /** 連線牌局的榮譽榜，不用登入。 */
+    static Map<String, Object> honorRoll() {
+        return object("type", "honorRoll");
+    }
+
     static Map<String, Object> joinRoom(String code) {
         return object("type", "joinRoom", "code", code);
     }

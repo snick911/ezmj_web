@@ -16,15 +16,23 @@
     button.click();
   };
 
-  function fillForm() {
-    const name = document.querySelector('input[type=text]');
+  function fillName() {
+    const name = document.querySelector('.name-row input');
     name.value = '自動玩家';
     name.dispatchEvent(new Event('input'));
-    const selects = document.querySelectorAll('.form-column select');
+  }
+
+  /** 按了開房間或跟電腦打之後跳出來的設定：籌碼、底、每台，電腦速度選快，再按確定。 */
+  function fillSetup() {
+    const selects = document.querySelectorAll('.setup-form select');
     selects[0].value = String(options.chips);
     selects[1].value = String(options.base);
     selects[2].value = String(options.tai);
     selects[selects.length - 1].value = 'FAST';
+    for (const select of selects) {
+      select.dispatchEvent(new Event('change'));
+    }
+    press(find('.setup-card button', options.second ? '開房間' : '開始牌局'), 'setup');
   }
 
   /** 從右到左點過去，點到能打的牌為止。之後的點擊因為已經不在等待，不會有作用。 */
@@ -91,8 +99,9 @@
   }
 
   let phase = 'form';
-  fillForm();
-  press(find('button', options.second ? '開房間' : '跟電腦打'), 'start');
+  fillName();
+  press(find('.start-buttons button', options.second ? '開房間' : '跟電腦打'), 'start');
+  fillSetup();
   phase = options.second ? 'room' : 'playing';
 
   const timer = window.setInterval(() => {

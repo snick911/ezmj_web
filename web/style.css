@@ -139,9 +139,23 @@ h1, h2, h3, p { margin: 0; }
   justify-content: center;
   padding: 1rem;
 }
-.form-card { width: min(56rem, 100%); }
-.form-columns { display: flex; flex-wrap: wrap; gap: 2.5rem; }
-.form-column { display: flex; flex: 1 1 16rem; flex-direction: column; gap: .5rem; }
+/* 大廳：名字與兩顆開局按鈕在最上面，房間列表用掉剩下的高度，太矮時整張卡片捲動 */
+.lobby-card { height: 100%; max-height: min(calc(100vh - 2rem), 50rem); width: min(60rem, 100%); }
+.lobby-top { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem 1.5rem; }
+.name-row { flex: 1 1 18rem; justify-content: flex-start; }
+.name-row .field { flex: 1 1 9.5rem; max-width: 14rem; }
+.start-buttons { display: flex; flex: 1 1 18rem; gap: .6rem; }
+.start-buttons .btn { flex: 1; font-size: 1.06rem; padding: .6rem 1rem; white-space: nowrap; }
+/* 用房號加入：標題、房號、加入房間緊挨著排，按鈕就在房號旁邊 */
+.join-row { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem .6rem; }
+.join-code { align-items: center; display: flex; flex: 0 1 auto; gap: .75rem; }
+.join-code .section { flex: 0 0 auto; margin-top: 0; }
+.join-code .field { flex: 1 1 8rem; max-width: 12rem; min-width: 6.5rem; }
+.join-row > .btn { flex: 0 0 auto; white-space: nowrap; }
+/* 開房間與跟電腦打跳出來的設定 */
+.setup-card { width: min(26rem, 100%); }
+.setup-form { display: flex; flex-direction: column; gap: .5rem; }
+.setup-card .button-row .btn { flex: 1; }
 .form-row { align-items: center; display: flex; gap: .75rem; justify-content: space-between; }
 .section { color: var(--gold); font-size: 1.06rem; margin-top: .5rem; }
 .field {
@@ -155,12 +169,17 @@ h1, h2, h3, p { margin: 0; }
   width: 9.5rem;
 }
 .field[type=range] { padding: 0; }
+/* 補位電腦 1、2、3 的等級排在同一列，放不下時三個選單一起換到標題下面 */
+.level-row { flex-wrap: wrap; row-gap: .3rem; }
+.level-boxes { display: flex; flex: 1 1 auto; gap: .3rem; margin-left: auto; max-width: 15.5rem; }
+.level-boxes .field { flex: 1 1 0; min-width: 4.2rem; padding-left: .2rem; padding-right: 0; width: auto; }
 .check { height: 1.1rem; width: 1.1rem; }
 .status { color: var(--muted); font-size: .875rem; min-height: 2.6em; }
 .version { color: var(--muted); font-size: .75rem; text-align: right; }
 .link { color: var(--gold); overflow-wrap: anywhere; }
-.side-row { display: flex; gap: .5rem; }
-.side-row .btn { flex: 1; }
+/* 按鈕的字不換行；放不下時整顆換到下一排，字體調大也一樣 */
+.side-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+.side-row .btn { flex: 1; padding-left: .5rem; padding-right: .5rem; white-space: nowrap; }
 .room-card { width: min(36rem, 100%); }
 .room-heading { align-items: center; display: flex; gap: 1.5rem; justify-content: space-between; }
 .room-name { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; min-width: 0; }
@@ -176,13 +195,13 @@ h1, h2, h3, p { margin: 0; }
 }
 .code-line { font-size: 1.1rem; font-weight: bold; }
 
-/* 大廳的房間列表：高度固定，房間多了自己捲動，畫面不會跟著跳 */
-.lobby-column { flex: 1.4 1 26rem; }
+/* 大廳的房間列表：用掉卡片剩下的高度，房間多了自己捲動，畫面不會跟著跳 */
 .list-heading, .list-footer { align-items: center; display: flex; gap: .75rem; justify-content: space-between; }
 .list-heading .btn, .list-footer .btn { flex: 0 0 auto; padding: .3rem .9rem; }
-.room-list { background: var(--panel-light); height: 13rem; overflow: auto; }
+.room-list { background: var(--panel-light); flex: 1 1 16rem; min-height: 10rem; overflow: auto; }
 .room-list .grid { width: 100%; }
-.room-list th { background: var(--panel); position: sticky; top: 0; }
+.room-list th { background: var(--panel); padding: .45rem .7rem; position: sticky; top: 0; }
+.room-list td { padding: .55rem .7rem; }
 .room-list tbody tr { cursor: pointer; }
 .room-list tbody tr:hover td { background: rgba(255, 255, 255, .06); }
 .room-list tbody tr.selected td { background: #2C6E58; color: #fff; }
@@ -451,6 +470,18 @@ h1, h2, h3, p { margin: 0; }
   width: min(100%, calc((100vh - 13rem) * .8));
 }
 
+/* 榮譽榜：四個類別是分頁，表格多了自己捲動，表頭固定 */
+/* 名字最長 16 字、三家等級不同時電腦那欄也長，電腦上要整張表放得下 */
+.honor-card { width: min(60rem, 100%); }
+.honor-card > .btn { align-self: flex-start; }
+.honor-tabs { display: flex; flex-wrap: wrap; gap: .4rem; }
+.honor-body { min-height: 8rem; }
+.honor-status { padding: 1rem 0; }
+.honor-scroll { max-height: 55vh; overflow: auto; }
+.honor-scroll .grid { width: 100%; }
+.honor-scroll th { position: sticky; top: 0; }
+.honor-scroll tr.mine td { background: rgba(232, 192, 90, .14); }
+
 /* 歷程 */
 .history-card { max-height: calc(100vh - 2rem); width: max-content; }
 .history-scroll { max-height: 60vh; overflow-y: auto; }
@@ -482,16 +513,16 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   .title { font-size: 1.45rem; }
   .headline { font-size: 1.2rem; }
   .form-screen { padding: .5rem; }
-  .form-columns { gap: .75rem 1.5rem; }
-  .form-column { flex-basis: 14rem; }
+  .lobby-card { max-height: calc(100vh - 1rem); max-height: calc(100dvh - 1rem); }
+  .start-buttons .btn { padding: .5rem .8rem; }
   /* iOS 碰到小於 16px 的輸入框會自動放大畫面 */
   .field { font-size: 16px; }
   .room-heading { flex-wrap: wrap; gap: .5rem; }
-  /* 窄的螢幕放不下等待秒數，房主的名字也縮短 */
-  .room-list { height: 11rem; }
-  .room-list .wait { display: none; }
+  /* 房主的名字縮短，列表的格子也窄一點 */
   .room-list .name { min-width: 5rem; }
-  .room-list .host { max-width: 4.5rem; }
+  .room-list .host { max-width: 6rem; }
+  .room-list th { padding: .35rem .45rem; }
+  .room-list td { padding: .5rem .45rem; }
 
   .sidebar {
     bottom: 0;
@@ -541,6 +572,11 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   /* 一排牌比螢幕寬時等比例縮小。尺寸寫在元素上，所以要 important */
   .tile-strip { height: auto !important; max-width: 100%; min-width: 0; }
   .tile-line { flex-wrap: wrap; }
+}
+
+/* 很窄的手機放不下等待秒數 */
+@media (max-width: 480px) {
+  .room-list .wait { display: none; }
 }
 
 /*
