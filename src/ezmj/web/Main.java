@@ -13,11 +13,13 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
 
     /** 連了這麼久還沒回應，多半是免費主機睡著了。 */
     private static final int WAKING_NOTICE_MS = 3_000;
+    private static final String WAKING = "正在喚醒服務器，第一次連線最久要等約一分鐘…";
 
     private final HTMLElement app = HTMLDocument.current().getElementById("app");
     private final WebSettings settings = WebSettings.load();
     private final String serverUrl = serverUrl();
     private final OnlinePanel form = new OnlinePanel(this, Browser.meta("ezmj-version"), serverUrl);
+    private final WaitingOverlay waiting = new WaitingOverlay();
     private OnlineController controller;
     private HistoryDialog history;
     private HelpDialog help;
@@ -77,12 +79,15 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
         }
     }
 
-    private void connecting() {
+    /** waitText 是等服務器時蓋在畫面上的那行字，連線期間可以取消。 */
+    private void connecting(String waitText) {
         form.setBusy("連線中…");
+        waiting.show(waitText, this::cancel);
         wakingTimer = Browser.after(WAKING_NOTICE_MS, () -> {
             wakingTimer = -1;
             if (form.isBusy()) {
-                form.setBusy("正在喚醒服務器，第一次連線最久要等約一分鐘…");
+                form.setBusy(WAKING);
+                waiting.setDetail(WAKING);
             }
         });
         controller = new OnlineController(this, settings, serverUrl);
@@ -97,25 +102,25 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
 
     @Override
     public void create(String name, RoomSettings roomSettings) {
-        connecting();
+        connecting("房間建立中，請耐心等待…");
         controller.createRoom(name, roomSettings);
     }
 
     @Override
     public void playBots(String name, RoomSettings roomSettings) {
-        connecting();
+        connecting(OnlineController.STARTING);
         controller.playBots(name, roomSettings);
     }
 
     @Override
     public void join(String name, String code) {
-        connecting();
+        connecting("加入房間中，請耐心等待…");
         controller.joinRoom(name, code);
     }
 
     @Override
     public void resume(WebProfile profile) {
-        connecting();
+        connecting("接回牌局中，請耐心等待…");
         controller.resume(profile);
     }
 
@@ -126,6 +131,7 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
             controller = null;
         }
         stopWakingNotice();
+        waiting.hide();
         form.setBusy(null);
     }
 
@@ -148,8 +154,19 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
     @Override
     public void showTable(TablePanel table) {
         form.stopLobby();
+        waiting.hide();
         show(table.element());
         table.repaint();
+    }
+
+    @Override
+    public void showWaiting(String text) {
+        waiting.show(text, null);
+    }
+
+    @Override
+    public void hideWaiting() {
+        waiting.hide();
     }
 
     @Override
@@ -187,15 +204,18 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
         }
     }
 
+    /** 連上了，接著等服務器開房間或加入，正在喚醒的說明收掉。 */
     @Override
     public void connected() {
         stopWakingNotice();
+        waiting.setDetail("");
     }
 
     @Override
     public void backToForm(String message) {
         controller = null;
         stopWakingNotice();
+        waiting.hide();
         form.setProfile(WebProfile.load());
         show(form.element());
         // 房間列表只在看得到大廳時更新

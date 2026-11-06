@@ -21,6 +21,9 @@ final class LobbyBrowser implements OnlineClient.Listener {
 
         /** 拿不到列表，清空之後顯示這段說明。 */
         void showListProblem(String text);
+
+        /** 服務器上連著的人數與牌局進行中的房間數。舊服務器沒有送、或拿不到列表時是 -1。 */
+        void showActivity(int online, int playingRooms);
     }
 
     private final String url;
@@ -60,10 +63,17 @@ final class LobbyBrowser implements OnlineClient.Listener {
     private void request() {
         if (client == null) {
             client = new WebClient(url, this);
+            client.onRoomsMessage(message -> view.showActivity(count(message, "online"), count(message, "playingRooms")));
             client.browse();
         } else {
             client.listRooms();
         }
+    }
+
+    /** 舊服務器沒有這個欄位，就是 -1。 */
+    private static int count(Map<String, Object> message, String field) {
+        Object value = message.get(field);
+        return value instanceof Number ? Math.max(0, ((Number) value).intValue()) : -1;
     }
 
     @Override

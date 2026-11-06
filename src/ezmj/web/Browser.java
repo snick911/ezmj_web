@@ -4,6 +4,8 @@ import org.teavm.jso.JSBody;
 import org.teavm.jso.JSFunctor;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.browser.Window;
+import org.teavm.jso.dom.events.Event;
+import org.teavm.jso.dom.html.HTMLCanvasElement;
 import org.teavm.jso.dom.html.HTMLElement;
 
 /** 瀏覽器提供的小功能。儲存空間與語音在隱私模式或舊瀏覽器可能不能用，一律靜靜地失敗。 */
@@ -92,6 +94,20 @@ final class Browser {
     @JSBody(script = "return 'ontouchstart' in window;")
     static native boolean isTouchDevice();
 
+    /** 中文輸入法還在選字，這時的 Enter 是選字，不是送出。 */
+    @JSBody(params = "event", script = "return !!(event.isComposing || event.keyCode === 229);")
+    static native boolean isComposing(Event event);
+
+    /**
+     * 按鍵該留給別人：游標在輸入框、按鈕或連結上，或畫面被視窗、等待的提示蓋住。
+     * 這時 Enter 照原本的意思，不是打開牌桌上的聊天。
+     */
+    @JSBody(script = "var active = document.activeElement;"
+            + "if (active && active !== document.body"
+            + " && (/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(active.tagName) || active.isContentEditable)) { return true; }"
+            + "return !!document.querySelector('.backdrop, .waiting');")
+    static native boolean keyBelongsElsewhere();
+
     /** 嵌入的字型載入好時通知，牌面要重畫。 */
     @JSBody(params = "action", script = "if (document.fonts) {"
             + " document.fonts.addEventListener('loadingdone', function () { action(); }); }")
@@ -102,6 +118,67 @@ final class Browser {
 
     @JSBody(script = "location.reload();")
     static native void reload();
+
+    /** 現在的當地時間，例如 202611062130，依序是年月日時分。 */
+    @JSBody(script = "var d = new Date();"
+            + "function two(n) { return (n < 10 ? '0' : '') + n; }"
+            + "return d.getFullYear() + two(d.getMonth() + 1) + two(d.getDate()) + two(d.getHours()) + two(d.getMinutes());")
+    static native String nowDigits();
+
+    /** 網站的網址，不含查詢參數，例如 snick911.github.io/ezmj_web/。寫在分享出去的圖上。 */
+    @JSBody(script = "return location.host + location.pathname.replace(/index\\.html$/, '');")
+    static native String siteAddress();
+
+    /** 網址不含查詢參數，本機測試時的 server 參數不會分享出去。 */
+    @JSBody(script = "return location.origin + location.pathname;")
+    static native String siteUrl();
+
+    /**
+     * 存成檔案。內容用 base64 傳過來，換成 Blob 再用連結下載；網址放一陣子才收回，
+     * 有些瀏覽器點了連結之後才開始讀。
+     */
+    @JSBody(params = {"base64", "type", "fileName"}, script = "var raw = atob(base64);"
+            + "var bytes = new Uint8Array(raw.length);"
+            + "for (var i = 0; i < raw.length; i++) { bytes[i] = raw.charCodeAt(i); }"
+            + "var url = URL.createObjectURL(new Blob([bytes], {type: type}));"
+            + "var link = document.createElement('a');"
+            + "link.href = url; link.download = fileName; link.rel = 'noopener';"
+            + "document.body.appendChild(link); link.click(); link.remove();"
+            + "setTimeout(function () { URL.revokeObjectURL(url); }, 60000);")
+    static native void downloadBase64(String base64, String type, String fileName);
+
+    /**
+     * 先把畫好的圖轉成 PNG 留在 canvas 上。分享要在按下去的當下呼叫，等轉檔就來不及了，所以視窗一打開就先轉。
+     */
+    @JSBody(params = "canvas", script = "canvas.toBlob(function (blob) { canvas.ezmjBlob = blob; }, 'image/png');")
+    static native void preparePng(HTMLCanvasElement canvas);
+
+    /** 這個瀏覽器能不能把圖檔分享給其他 App，手機與部分電腦可以。 */
+    @JSBody(script = "try { return !!(navigator.canShare && window.File"
+            + " && navigator.canShare({files: [new File([''], 'ezmj.png', {type: 'image/png'})]})); }"
+            + " catch (e) { return false; }")
+    static native boolean canShareFiles();
+
+    /** 分享 preparePng 準備好的圖，還沒準備好或不能分享就回 false。按了取消不算失敗。 */
+    @JSBody(params = {"canvas", "fileName", "title", "text"}, script = "var blob = canvas.ezmjBlob;"
+            + "if (!blob || !navigator.canShare || !window.File) { return false; }"
+            + "var file = new File([blob], fileName, {type: 'image/png'});"
+            + "if (!navigator.canShare({files: [file]})) { return false; }"
+            + "navigator.share({files: [file], title: title, text: text}).catch(function (e) {"
+            + " if (e.name !== 'AbortError') { console.warn('不能分享：' + e.message); } });"
+            + "return true;")
+    static native boolean sharePng(HTMLCanvasElement canvas, String fileName, String title, String text);
+
+    /** 把畫好的圖存成 PNG。preparePng 轉好了就直接用，不然當場轉。 */
+    @JSBody(params = {"canvas", "fileName"}, script = "function save(blob) {"
+            + " if (!blob) { return; }"
+            + " var url = URL.createObjectURL(blob);"
+            + " var link = document.createElement('a');"
+            + " link.href = url; link.download = fileName; link.rel = 'noopener';"
+            + " document.body.appendChild(link); link.click(); link.remove();"
+            + " setTimeout(function () { URL.revokeObjectURL(url); }, 60000); }"
+            + "if (canvas.ezmjBlob) { save(canvas.ezmjBlob); } else { canvas.toBlob(save, 'image/png'); }")
+    static native void downloadPng(HTMLCanvasElement canvas, String fileName);
 
     @JSBody(params = "text", script = "console.warn(text);")
     static native void warn(String text);

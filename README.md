@@ -51,7 +51,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 
 ## 測試
 
-`test/ezmj/web/AllTests.java` 不依賴框架，直接執行 `main`，只測不碰瀏覽器的部分：訊息格式、協定版本、樂譜、骰子的點數。
+`test/ezmj/web/AllTests.java` 不依賴框架，直接執行 `main`，只測不碰瀏覽器的部分：訊息格式、協定版本、樂譜、骰子的點數、PDF 的結構與金額的千分位。
 
 畫面與連線要在瀏覽器裡實際打。`tools/autoplay.js` 只操作畫面上的按鈕與牌，和真人一樣，會打完一整場並把結果留在 `window.__auto`：
 
@@ -74,6 +74,8 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 | `Theme` | 顏色與字型，HTML 的樣式在 `web/style.css` | 同名 |
 | `OnlinePanel`、`LobbyBrowser`、`RoomPanel` | 大廳與房間列表、房間 | 同名 |
 | `ResultDialog`、`FinalDialog`、`HistoryDialog`、`HelpDialog`、`SettingsDialog`、`Dialog` | 各種視窗 | 同名 |
+| `ShareDialog`、`GameReport`、`PdfWriter` | 牌局結束後的結果圖與輸贏歷程 PDF | 網頁版才有 |
+| `WaitingOverlay` | 等服務器回應時蓋住畫面的提示 | 網頁版才有 |
 | `SoundEffects`、`BackgroundMusic`、`MusicScores`、`VoiceLines` | 音效、音樂、語音 | 同名 |
 | `WebSettings`、`WebProfile` | 存在瀏覽器裡的設定與上次的牌局 | `AppSettings`、`OnlineProfile` |
 | `Browser`、`Dom`、`AudioOut`、`GridTable`、`TileStrip` | 瀏覽器的小工具 | |
@@ -88,8 +90,12 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 - **背景分頁**：瀏覽器會放慢背景分頁的計時器，可能趕不上服務器 60 秒的限制。收到訊息時也會順便檢查該不該送 ping，牌局進行中服務器一直有訊息，就不靠計時器。真的斷了就靠重連。
 - **版本不合**：網頁和服務器分開部署，瀏覽器可能還留著舊版。服務器回 `protocolMismatch` 時會請玩家重新整理。
 - **房間列表**：看得到大廳時另外開一條不登入的連線，每 5 秒送 `listRooms`，換到房間或牌桌就關掉。列表沒變就不重畫，選取與連點兩下才不會被打斷。服務器還不認得 `listRooms` 時，只在列表那裡顯示說明，開房與用房號加入照樣能用。
+- **在線人數**：`rooms` 的 `online`（連線數，看大廳的也算）與 `playingRooms`（進行中的牌局，私人房與一人房間也算）顯示在列表上面。`ezmjService` 0.4.0 和更早的版本沒有這兩個欄位，這一行就藏起來。
+- **等服務器**：開房間、加入、接回與開局送出後，整個畫面蓋上 `WaitingOverlay`，到換成房間或牌桌、出錯或斷線才收。跟電腦打是開好房間就接著開局，中間不收，畫面不會閃一下房間。
 - **跟電腦打**：一人房間一律是私人的，打完回到房間時別人不會從大廳加進來。
-- **聊天**：連線的牌桌都有，跟電腦打的一人房間也有，走牌局同一條連線的 `chat`。「紀錄」一律預設收起來，空出來的地方給聊天，收合按鈕是 CSS 畫的箭頭。服務器不補送斷線期間的訊息。說太快、太長或舊服務器不能聊天，都只顯示在聊天區。
+- **聊天**：連線的牌桌都有，跟電腦打的一人房間也有，走牌局同一條連線的 `chat`。「紀錄」一律預設收起來，空出來的地方給聊天，收合按鈕是 CSS 畫的箭頭。服務器不補送斷線期間的訊息。說太快、太長或舊服務器不能聊天，顯示在聊天區，牌桌上自己那一側也跳一下。
+  - 牌桌上的泡泡蓋在畫布上，位置由 `TableCanvas.syncChatAnchors` 寫在 CSS 變數 `--chat-x0` 到 `--chat-y3`，和 `--hint-*` 一樣用 `style.setProperty`。
+  - 在牌桌上按 Enter 跳出輸入框。按鍵聽整頁的，牌桌換掉之後第一次按鍵時拿掉；游標在輸入框、按鈕或連結上、有 `.backdrop` 或 `.waiting` 蓋著，或輸入法還在選字時不搶。
 - **擲骰子與牌牆**：照 Swing 版，規則與時間見 `ezmj` README 的「擲骰子與牌牆」。服務器沒有送骰子，用 `OnlineGame.dice` 從房號、莊家、圈風、局風與連莊數算，和同桌的 Swing 版一樣；`AllTests` 比對一組固定的點數，算法改了兩邊要一起改。骰子加發牌約 2.4 秒，要在 `roundStart` 的 `dealMs`（3 秒）之內。
 - **報聽**：打出牌後服務器送 `canListen` 才出現「聽牌」按鈕，按了送 `declareListen`。`askTurn` 的 `readyDiscards` 網頁不再用。
 
@@ -118,6 +124,9 @@ token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束�
 |---|---|
 | 單機模式 | 用一人房間代替，服務器要在線上。不能不限時（最長每步 300 秒），不能存檔，沒有電腦代打 |
 | 統計、成就、榮譽榜 | 沒有 |
+| 結果圖與輸贏 PDF | 網頁版才有，在牌局結束的視窗。PDF 每頁是一張圖，字不能選取 |
+| 牌桌上的聊天泡泡、Enter 聊天 | 網頁版才有 |
+| 牌桌上的名字 | 比 Swing 版大：中央方框四邊 17，Swing 是 14 |
 | 牌面的字 | 優先用系統的楷書，和 Swing 一樣；沒有時用 `web/fonts/ezmj-kai.woff2`，字形略有差異 |
 | 語音 | Web Speech API，聲音依裝置而異，沒有中文語音的裝置不出聲 |
 | 音樂 | 取樣率 22 kHz，瀏覽器只有一條執行緒，每次只合成一小段 |

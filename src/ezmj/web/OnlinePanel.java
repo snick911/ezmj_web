@@ -64,6 +64,10 @@ final class OnlinePanel implements LobbyBrowser.View {
     private final HTMLSelectElement speedBox = speedSelect();
     private final HTMLElement roomList = Dom.el("div", "room-list");
     private final HTMLElement listStatus = Dom.text("div", "muted", LOADING);
+    /** 在線人數與進行中的牌局數，舊服務器沒有就藏起來。 */
+    private final HTMLElement activity = Dom.el("div", "lobby-activity");
+    private final HTMLElement onlineCount = Dom.text("span", "activity-item online", " ");
+    private final HTMLElement playingCount = Dom.text("span", "activity-item playing", " ");
     private final HTMLButtonElement listJoinButton;
     private final HTMLButtonElement soloButton;
     private final HTMLButtonElement createButton;
@@ -144,6 +148,11 @@ final class OnlinePanel implements LobbyBrowser.View {
         listHeading.appendChild(Dom.text("h2", "section", "公開的房間"));
         listHeading.appendChild(Dom.button("重新整理", Theme.BUTTON, this::refresh));
         left.appendChild(listHeading);
+        activity.appendChild(onlineCount);
+        activity.appendChild(playingCount);
+        activity.setAttribute("title", "在線人數包含正在看大廳的人；進行中的牌局也包含私人房間與跟電腦打的");
+        Dom.visible(activity, false);
+        left.appendChild(activity);
         left.appendChild(roomList);
         HTMLElement listFooter = Dom.el("div", "list-footer");
         listFooter.appendChild(listStatus);
@@ -289,6 +298,7 @@ final class OnlinePanel implements LobbyBrowser.View {
     void stopLobby() {
         lobby.stop();
         showRooms(List.of());
+        showActivity(-1, -1);
         listStatus.setInnerText(LOADING);
     }
 
@@ -317,7 +327,18 @@ final class OnlinePanel implements LobbyBrowser.View {
     @Override
     public void showListProblem(String text) {
         showRooms(List.of());
+        showActivity(-1, -1);
         listStatus.setInnerText(text);
+    }
+
+    @Override
+    public void showActivity(int online, int playingRooms) {
+        boolean known = online >= 0 && playingRooms >= 0;
+        Dom.visible(activity, known);
+        if (known) {
+            onlineCount.setInnerText("在線 " + online + " 人");
+            playingCount.setInnerText(playingRooms + " 桌牌局進行中");
+        }
     }
 
     /** 房間名稱與房主的名字來自網路，GridTable 一律用 innerText。滑鼠停著看得到完整的名稱與電腦速度。 */

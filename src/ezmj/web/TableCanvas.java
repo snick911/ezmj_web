@@ -123,9 +123,15 @@ final class TableCanvas {
     private static final int WIDE_ROWS_SIDE = 6;
     /** 橫向時自己的手牌排滿整個寬度，但牌高最多佔牌桌高度的這個比例。 */
     private static final double WIDE_HAND_HEIGHT = .19;
-    /** 橫向時名字標籤的寬度上限與高度，單位是 unit。 */
-    private static final double WIDE_LABEL_W = 132;
-    private static final double WIDE_LABEL_H = 22;
+    /** 中央方框四邊的名字，單位是 unit。Swing 版是 14，網頁版的名字放大一點比較好認。 */
+    private static final double SEAT_LABEL_SIZE = 17;
+    /** 橫向時名字標籤的寬度上限、高度與字的大小，單位是 unit。 */
+    private static final double WIDE_LABEL_W = 150;
+    private static final double WIDE_LABEL_H = 25;
+    private static final double WIDE_LABEL_SIZE = 15;
+    /** 聊天泡泡離牌桌中心多遠，是中心到該家邊緣的比例：上下兩家在棄牌上，左右兩家靠近手牌。 */
+    private static final double CHAT_ACROSS = .5;
+    private static final double CHAT_SIDE = .76;
     /** 橫向時寫給動作列的 CSS 變數，順序和 syncOverlay 算的值一樣。 */
     private static final String[] OVERLAY_VARS = {
         "--hint-left", "--hint-bottom", "--hint-width", "--act-right", "--act-bottom", "--act-width"};
@@ -250,6 +256,9 @@ final class TableCanvas {
     /** 橫向時浮在牌桌上的提示與按鈕，位置用 CSS 變數告訴它。 */
     private HTMLElement overlay;
     private String overlayStyle = "";
+    /** 聊天泡泡那一層，各家泡泡的位置用 CSS 變數告訴它。 */
+    private HTMLElement chatLayer;
+    private String chatStyle = "";
     private double frameNow;
     /** 擲骰子開始的時間，發牌在 DICE_MS 之後。0 表示沒有在演。 */
     private double dealStart;
@@ -303,6 +312,11 @@ final class TableCanvas {
     /** 動作列。手機橫向時它蓋在牌桌上，提示與按鈕要放在牌桌留給它們的地方。 */
     void setOverlay(HTMLElement overlay) {
         this.overlay = overlay;
+    }
+
+    /** 聊天泡泡那一層，蓋在牌桌上，畫的時候把各家的位置寫給它。 */
+    void setChatLayer(HTMLElement layer) {
+        this.chatLayer = layer;
     }
 
     void setRound(RoundView round, Dice dice) {
@@ -950,6 +964,7 @@ final class TableCanvas {
                 paintNameStrips(g);
                 syncOverlay();
             }
+            syncChatAnchors();
             g.translate(cx, cy);
             paintCenterText(g, tableUnit());
             paintDice(g, tableUnit());
@@ -1308,7 +1323,7 @@ final class TableCanvas {
         String wind = Tile.windName(round.seatWind(seat));
         String dealerMark = round.dealer() == seat ? "莊 " : "";
         String text = dealerMark + wind + "  " + player.name() + (compact ? "  " + player.chips() : "");
-        g.font(Theme.font(true, 14 * unit));
+        g.font(Theme.font(true, SEAT_LABEL_SIZE * unit));
         g.color(active ? "#000000" : Theme.TEXT);
         // 報聽的標記放在右端、轉角的方格內側，名字往左讓開
         boolean listening = round.isListening(seat);
@@ -1317,7 +1332,7 @@ final class TableCanvas {
         double textWidth = g.textWidth(text);
         double maxWidth = half * 2 - 8 * unit - badgeRoom * 2;
         if (textWidth > maxWidth) {
-            g.font(Theme.font(true, 14 * unit * maxWidth / textWidth));
+            g.font(Theme.font(true, SEAT_LABEL_SIZE * unit * maxWidth / textWidth));
         }
         g.drawCentered(text, -badgeRoom / 2, half - 15 * unit);
         if (listening) {
@@ -1652,7 +1667,7 @@ final class TableCanvas {
         double badge = listening ? 24 * u : 0;
         // 名字最多用掉六成，留地方給花牌
         double maxW = Math.max(0, Math.min(WIDE_LABEL_W * u, (right - left) * .62));
-        double size = 13 * u;
+        double size = WIDE_LABEL_SIZE * u;
         context.setFont(Theme.font(true, size));
         double textW = context.measureText(text).getWidth();
         double fits = maxW - pad * 2 - badge;
@@ -1736,6 +1751,34 @@ final class TableCanvas {
         // 網頁的 CSP 不准用 style 屬性，要經過 CSSOM 設定
         for (int i = 0; i < OVERLAY_VARS.length; i++) {
             overlay.getStyle().setProperty(OVERLAY_VARS[i], Math.max(0, Math.round(values[i])) + "px");
+        }
+    }
+
+    /**
+     * 聊天泡泡的位置，螢幕座標，寫進 CSS 變數 --chat-x0 到 --chat-y3。上下兩家在中心與手牌之間、左右置中；
+     * 左右兩家靠近自己的手牌，泡泡往中間長，見 style.css 的 .chat-seat。
+     */
+    private void syncChatAnchors() {
+        if (chatLayer == null) {
+            return;
+        }
+        double[] values = new double[8];
+        for (int seat = 0; seat < 4; seat++) {
+            Point at = toTable(seat, 0, halfDepth(seat) * (seat % 2 == 0 ? CHAT_ACROSS : CHAT_SIDE));
+            values[seat * 2] = centerX() + at.x();
+            values[seat * 2 + 1] = centerY() + at.y();
+        }
+        StringBuilder key = new StringBuilder();
+        for (double value : values) {
+            key.append(Math.round(value)).append(',');
+        }
+        if (key.toString().equals(chatStyle)) {
+            return;
+        }
+        chatStyle = key.toString();
+        for (int seat = 0; seat < 4; seat++) {
+            chatLayer.getStyle().setProperty("--chat-x" + seat, Math.round(values[seat * 2]) + "px");
+            chatLayer.getStyle().setProperty("--chat-y" + seat, Math.round(values[seat * 2 + 1]) + "px");
         }
     }
 

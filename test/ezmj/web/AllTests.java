@@ -33,6 +33,8 @@ public final class AllTests {
         everyVoiceHasTheSameLength();
         voiceTextUsesTableNames();
         diceMatchSwingClient();
+        pdfOffsetsPointAtObjects();
+        moneyIsGroupedByThousands();
         System.out.println("通過 " + passed + " 項");
     }
 
@@ -122,6 +124,47 @@ public final class AllTests {
                 "{\"type\":\"roundStart\",\"number\":7,\"dealer\":0,\"roundWind\":1,\"streak\":1,\"dealMs\":3000}"));
         check(game.dice().equals(new Dice(1, 3, 1)), "骰子應該是 1、3、1，實際是 " + game.dice());
         same(WallRing.announce(game, game.dice()), "小明 擲出 1、3、1，共 5 點，從小明的牌牆開門");
+    }
+
+    /** 閱讀器靠 xref 找物件，位移錯一個位元組就打不開或要修復。 */
+    private static void pdfOffsetsPointAtObjects() {
+        PdfWriter pdf = new PdfWriter(842, 595);
+        byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, 1, 2, 3, (byte) 0xFF, (byte) 0xD9};
+        pdf.addPage(jpeg, 4, 3);
+        pdf.addPage(jpeg, 4, 3);
+        byte[] bytes = pdf.toBytes("EZMJ 輸贏歷程", "D:20261106213000");
+        String text = latin1(bytes, 0, bytes.length);
+        check(text.startsWith("%PDF-1.4\n"), "開頭是 PDF 的版本");
+        check(text.endsWith("%%EOF\n"), "結尾是 %%EOF");
+        check(text.contains("/Count 2"), "兩頁");
+        check(text.contains("/Title <FEFF0045005A004D004A00208F388D0F6B777A0B>"), "標題用 UTF-16BE");
+        int start = text.lastIndexOf("startxref\n") + "startxref\n".length();
+        int xref = Integer.parseInt(text.substring(start, text.indexOf('\n', start)));
+        check(text.startsWith("xref\n0 10\n", xref), "startxref 指到 xref，共 9 個物件加上 0 號");
+        String[] lines = text.substring(xref).split("\n");
+        for (int object = 1; object <= 9; object++) {
+            String entry = lines[2 + object];
+            check(entry.length() == 19 && entry.endsWith(" 00000 n "), "xref 每筆 20 個位元組：" + entry);
+            int offset = Integer.parseInt(entry.substring(0, 10));
+            check(text.startsWith(object + " 0 obj\n", offset), object + " 號物件的位移");
+        }
+        check(text.contains("/Length 7 >>\nstream\n" + latin1(jpeg, 0, jpeg.length) + "\nendstream"), "JPEG 原封不動放進去");
+    }
+
+    private static String latin1(byte[] bytes, int from, int to) {
+        StringBuilder text = new StringBuilder();
+        for (int i = from; i < to; i++) {
+            text.append((char) (bytes[i] & 0xFF));
+        }
+        return text.toString();
+    }
+
+    private static void moneyIsGroupedByThousands() {
+        same(GameReport.signed(1234567), "+1,234,567");
+        same(GameReport.signed(-1000), "-1,000");
+        same(GameReport.signed(0), "0");
+        same(GameReport.grouped(999), "999");
+        same(GameReport.signed(Integer.MIN_VALUE), "-2,147,483,648");
     }
 
     private static void voiceTextUsesTableNames() {

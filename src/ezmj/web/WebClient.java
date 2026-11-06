@@ -2,6 +2,7 @@ package ezmj.web;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import org.teavm.jso.dom.events.MessageEvent;
 import org.teavm.jso.websocket.WebSocket;
@@ -34,6 +35,8 @@ final class WebClient {
 
     private final String url;
     private final OnlineClient.Listener listener;
+    /** 整則 rooms 訊息，大廳要看列表以外的欄位，例如在線人數。 */
+    private Consumer<Map<String, Object>> roomsMessage = message -> { };
 
     private WebSocket socket;
     /** 每開一條連線加一，舊連線晚到的通知就認得出來。 */
@@ -82,6 +85,11 @@ final class WebClient {
 
     void listRooms() {
         send(Messages.listRooms());
+    }
+
+    /** 收到 rooms 時，在 Listener.rooms 之後把整則訊息交給 action。 */
+    void onRoomsMessage(Consumer<Map<String, Object>> action) {
+        roomsMessage = action;
     }
 
     void createRoom(RoomSettings settings) {
@@ -317,6 +325,7 @@ final class WebClient {
                 return;
             }
             listener.rooms(rooms);
+            roomsMessage.accept(message);
         } else if (loggedIn || browsing) {
             listener.message(message);
         } else if ("welcome".equals(type)) {

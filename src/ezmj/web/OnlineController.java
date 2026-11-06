@@ -27,12 +27,20 @@ import ezmj.online.RoomSettings;
 final class OnlineController implements OnlineClient.Listener, TablePresenter.Table {
 
     private static final int RESULT_SECONDS = 60;
+    /** 送出開局後，等服務器開好牌桌時蓋在畫面上的字。 */
+    static final String STARTING = "牌局建立中，請耐心等待…";
 
     /** 頁面提供的事。 */
     interface Host {
         void showRoom(RoomPanel room);
 
+        /** 換成牌桌時，等待的提示也一起收掉。 */
         void showTable(TablePanel table);
+
+        /** 等服務器回應時蓋住畫面，已經蓋著就只換字。 */
+        void showWaiting(String text);
+
+        void hideWaiting();
 
         void showHistory(GameView game);
 
@@ -81,6 +89,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     private boolean finishing;
     /** 跟電腦打：房間開好就直接開局。 */
     private boolean startWhenRoomReady;
+    /** 送出開局了，還沒看到牌桌。這時房間又有變化也要繼續等。 */
+    private boolean starting;
     private Dialog openDialog;
     private boolean shutDown;
 
@@ -197,6 +207,9 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         dealPending = false;
         waiting = false;
         askAgain = null;
+        // 重連後服務器會再送房間，已經開局的話就直接換成牌桌
+        starting = false;
+        host.hideWaiting();
         if (presenter != null) {
             presenter.showIdle("連線中斷，正在重新連線…");
         } else if (roomPanel != null) {
@@ -317,6 +330,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
             if (game == null || game.isOver()) {
                 closeOpenDialog();
                 finishing = false;
+                starting = false;
                 closeTable();
                 openTable(info);
             }
@@ -330,15 +344,25 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
             closeTable();
             showRoom();
             if (startWhenRoomReady) {
+                // 開房間時蓋上的提示不收，直接換成開局的字，畫面不會閃一下房間
                 startWhenRoomReady = false;
-                client.start();
+                startGame();
+            } else if (!starting) {
+                host.hideWaiting();
             }
         }
     }
 
+    /** 送出開局，等服務器開好牌桌。服務器閒置或很忙時要等一下，先蓋上提示，也免得按第二次。 */
+    private void startGame() {
+        starting = true;
+        client.start();
+        host.showWaiting(STARTING);
+    }
+
     private void showRoom() {
         if (roomPanel == null) {
-            roomPanel = new RoomPanel(() -> client.start(), this::leaveRoom);
+            roomPanel = new RoomPanel(this::startGame, this::leaveRoom);
         }
         roomPanel.setRoom(room);
         host.showRoom(roomPanel);
@@ -378,6 +402,9 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
                 askAgain.run();
             }
         } else {
+            // 例如開局被拒絕，不用再等了
+            starting = false;
+            host.hideWaiting();
             Dialog.message(text);
         }
     }
@@ -393,7 +420,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
             return;
         }
         OnlineGame.Chat chat = game.parseChat(message);
-        view.appendChat(chat.name(), chat.text(), chat.seat() == 0);
+        view.appendChat(chat.seat(), chat.name(), chat.text(), chat.seat() == 0);
     }
 
     private void leaveRoom() {
@@ -598,7 +625,9 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
             backToRoom(shown);
             return;
         }
-        FinalDialog dialog = new FinalDialog(shown, "回到房間", () -> host.showHistory(shown));
+        RoomInfo info = shown.room();
+        String roomName = info == null ? "" : info.settings().name().trim();
+        FinalDialog dialog = new FinalDialog(shown, roomName, "回到房間", () -> host.showHistory(shown));
         openDialog = dialog;
         dialog.setOnClose(() -> {
             openDialog = null;

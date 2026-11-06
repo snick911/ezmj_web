@@ -5,8 +5,10 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 import org.teavm.jso.dom.events.Event;
+import org.teavm.jso.dom.events.EventListener;
 import org.teavm.jso.dom.events.KeyboardEvent;
 import org.teavm.jso.dom.html.HTMLButtonElement;
+import org.teavm.jso.dom.html.HTMLDocument;
 import org.teavm.jso.dom.html.HTMLElement;
 import org.teavm.jso.dom.html.HTMLInputElement;
 
@@ -26,6 +28,13 @@ final class TablePanel {
 
     /** 聊天一則最多幾個字，和服務器一樣。 */
     static final int MAX_CHAT_LENGTH = 100;
+    /** 牌桌上的聊天泡泡：每家最多疊幾則，停留時間照字數，到了就淡出。 */
+    private static final int MAX_BUBBLES = 3;
+    private static final int BUBBLE_MIN_MS = 3_500;
+    private static final int BUBBLE_PER_CHAR_MS = 90;
+    private static final int BUBBLE_MAX_MS = 9_000;
+    /** 和 style.css 的 .chat-bubble.leaving 一樣長。 */
+    private static final int BUBBLE_FADE_MS = 400;
 
     /** 動作列上的一個按鈕。 */
     record ActionItem(String label, String color, Runnable run) {
@@ -50,6 +59,13 @@ final class TablePanel {
     private final HTMLElement chatList = Dom.el("div", "chat-list");
     private final HTMLElement chatNotice = Dom.text("div", "chat-notice", " ");
     private final HTMLInputElement chatField = (HTMLInputElement) Dom.el("input", "field chat-field");
+    /** 蓋在牌桌上的聊天泡泡，點擊會穿過去；四家各一疊，位置由牌桌算好。 */
+    private final HTMLElement chatLayer = Dom.el("div", "chat-layer");
+    private final HTMLElement[] chatSeats = new HTMLElement[4];
+    /** 在牌桌上按 Enter 跳出來的輸入框，送出或按 Esc 就收起來。 */
+    private final HTMLElement quickChat = Dom.el("div", "quick-chat");
+    private final HTMLInputElement quickField = (HTMLInputElement) Dom.el("input", "field quick-chat-field");
+    private final EventListener<Event> hotkey = event -> onHotkey((KeyboardEvent) event);
     private final HTMLElement sidebar = Dom.el("div", "sidebar");
     private final HTMLElement shade = Dom.el("div", "drawer-shade");
     private final HTMLElement menu;
@@ -77,6 +93,7 @@ final class TablePanel {
         actionBar.appendChild(actionButtons);
         main.appendChild(actionBar);
         canvas.setOverlay(actionBar);
+        buildChatLayer();
         root.appendChild(main);
         shade.addEventListener("click", event -> showDrawer(false));
         root.appendChild(shade);
@@ -141,9 +158,87 @@ final class TablePanel {
         return header;
     }
 
+    /** 牌桌上的聊天泡泡與快速輸入框。按鍵聽整頁的，牌桌換掉之後第一次按鍵時就不再聽。 */
+    private void buildChatLayer() {
+        for (int seat = 0; seat < chatSeats.length; seat++) {
+            chatSeats[seat] = Dom.el("div", "chat-seat seat-" + seat);
+            chatLayer.appendChild(chatSeats[seat]);
+        }
+        quickField.setType("text");
+        quickField.setMaxLength(MAX_CHAT_LENGTH * 2);
+        quickField.setAttribute("autocomplete", "off");
+        quickField.setAttribute("enterkeyhint", "send");
+        quickField.setAttribute("placeholder", "說點什麼，Enter 送出，Esc 取消");
+        quickField.setAttribute("aria-label", "聊天");
+        quickField.addEventListener("input", event -> {
+            String limited = OnlinePanel.limited(quickField.getValue(), MAX_CHAT_LENGTH);
+            if (!limited.equals(quickField.getValue())) {
+                quickField.setValue(limited);
+            }
+        });
+        quickField.addEventListener("keydown", event -> {
+            KeyboardEvent key = (KeyboardEvent) event;
+            if (Browser.isComposing(key)) {
+                return;
+            }
+            // 不要再傳到整頁的按鍵，不然送出後輸入框又被同一個 Enter 打開
+            if ("Enter".equals(key.getKey())) {
+                key.preventDefault();
+                key.stopPropagation();
+                sendQuickChat();
+            } else if ("Escape".equals(key.getKey())) {
+                key.preventDefault();
+                key.stopPropagation();
+                closeQuickChat();
+            }
+        });
+        // 點到別的地方就收起來，打到一半的字留著，下次打開還在
+        quickField.addEventListener("blur", event -> Dom.visible(quickChat, false));
+        quickChat.appendChild(quickField);
+        Dom.visible(quickChat, false);
+        chatLayer.appendChild(quickChat);
+        canvas.element().appendChild(chatLayer);
+        canvas.setChatLayer(chatLayer);
+        HTMLDocument.current().addEventListener("keydown", hotkey);
+    }
+
+    /** 在牌桌上按 Enter 就跳出輸入框，游標在別的輸入框、按鈕上或有視窗蓋著時不搶。 */
+    private void onHotkey(KeyboardEvent event) {
+        if (root.getParentNode() == null) {
+            HTMLDocument.current().removeEventListener("keydown", hotkey);
+            return;
+        }
+        if (chatSender == null || !"Enter".equals(event.getKey()) || event.isCtrlKey() || event.isAltKey()
+                || event.isMetaKey() || event.isShiftKey() || Browser.isComposing(event) || Browser.keyBelongsElsewhere()) {
+            return;
+        }
+        event.preventDefault();
+        Dom.visible(quickChat, true);
+        quickField.focus();
+    }
+
+    private void sendQuickChat() {
+        String text = quickField.getValue().trim();
+        if (chatSender != null && !text.isEmpty()) {
+            chatSender.accept(text);
+            quickField.setValue("");
+        }
+        closeQuickChat();
+    }
+
+    private void closeQuickChat() {
+        Dom.visible(quickChat, false);
+        quickField.blur();
+    }
+
     /** 聊天：訊息列表、一行說明、輸入框與送出，按 Enter 也送出。有聊天時才出現。 */
     private HTMLElement buildChatBox() {
-        chatBox.appendChild(Dom.text("div", "side-title", "聊天"));
+        HTMLElement heading = Dom.el("div", "chat-heading");
+        heading.appendChild(Dom.text("span", "side-title", "聊天"));
+        if (!Browser.isTouchDevice()) {
+            heading.appendChild(Dom.text("span", "chat-tip", "牌桌上按 Enter 直接打字"));
+        }
+        chatBox.appendChild(heading);
         chatBox.appendChild(chatList);
         chatBox.appendChild(chatNotice);
         chatField.setType("text");
@@ -190,22 +285,49 @@ final class TablePanel {
         Dom.visible(chatBox, sender != null);
     }
 
-    /** 名字與文字來自網路，一律用 innerText。手機的選單收著時，在選單上標出有新訊息。 */
-    void appendChat(String name, String text, boolean mine) {
+    /**
+     * 名字與文字來自網路，一律用 innerText。seat 是畫面座位，0 是自己。
+     * 牌桌上在說話的那家旁邊跳出泡泡，幾秒後消失；手機的選單收著時，在選單上標出有新訊息。
+     */
+    void appendChat(int seat, String name, String text, boolean mine) {
         HTMLElement line = Dom.el("div", mine ? "chat-line mine" : "chat-line");
         line.appendChild(Dom.text("span", "chat-name", (mine ? "我" : name) + "："));
         line.appendChild(Dom.text("span", "", text));
         chatList.appendChild(line);
         chatList.setScrollTop(chatList.getScrollHeight());
         chatNotice.setInnerText(" ");
+        showBubble(seat, mine ? "我" : name, text, mine ? "chat-bubble mine" : "chat-bubble");
         if (!mine && !drawerOpen) {
             menu.setClassName("btn menu-button unread");
         }
     }
 
-    /** 聊天送不出去的原因，例如說太快或舊服務器不能聊天。 */
+    /** 聊天送不出去的原因，例如說太快或舊服務器不能聊天。用快速輸入框的人看不到側欄，所以牌桌上也跳一下。 */
     void showChatNotice(String text) {
         chatNotice.setInnerText(text);
+        showBubble(0, null, text, "chat-bubble notice");
+    }
+
+    /** 太多就先拿掉最舊的。name 是 null 時只有一行字。 */
+    private void showBubble(int seat, String name, String text, String cssClass) {
+        if (seat < 0 || seat >= chatSeats.length) {
+            return;
+        }
+        HTMLElement stack = chatSeats[seat];
+        while (stack.getChildNodes().getLength() >= MAX_BUBBLES) {
+            stack.removeChild(stack.getFirstChild());
+        }
+        HTMLElement bubble = Dom.el("div", cssClass);
+        if (name != null) {
+            bubble.appendChild(Dom.text("span", "bubble-name", name));
+        }
+        bubble.appendChild(Dom.text("span", "bubble-text", text));
+        stack.appendChild(bubble);
+        int ms = Math.min(BUBBLE_MAX_MS, BUBBLE_MIN_MS + BUBBLE_PER_CHAR_MS * text.codePointCount(0, text.length()));
+        Browser.after(ms, () -> {
+            bubble.setClassName(cssClass + " leaving");
+            Browser.after(BUBBLE_FADE_MS, () -> Dom.remove(bubble));
+        });
     }
 
     private void sendChat() {
