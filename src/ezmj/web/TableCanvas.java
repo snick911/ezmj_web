@@ -243,6 +243,8 @@ final class TableCanvas {
     private Set<Tile> pickable;
     /** 已經選好的第一張牌；吃牌還要再選一張時才有。 */
     private Tile picked;
+    /** 選牌中能點的牌加上金框。 */
+    private boolean markPickable;
     private Consumer<Tile> onPick;
     private int hover = -1;
     /** 這次點擊是手指點的，瀏覽器接著會送滑鼠事件。 */
@@ -465,7 +467,7 @@ final class TableCanvas {
                 addWinBanner(event.type() == RoundEvent.Type.SELF_WIN);
                 break;
             case LISTEN:
-                addSeatBanner(event.seat(), "報聽");
+                addSeatBanner(event.seat(), "聽牌");
                 listenStart[event.seat()] = Browser.now();
                 break;
             default:
@@ -897,15 +899,20 @@ final class TableCanvas {
         discardEnabled = enabled;
         pickable = null;
         picked = null;
+        markPickable = false;
         hover = -1;
         repaint();
     }
 
-    /** 開始選牌：只有 tiles 裡的牌能點，其他手牌蓋上遮罩。first 是已經選好、要留著不蓋的牌。 */
-    void startPick(Set<Tile> tiles, Tile first, Consumer<Tile> onPick) {
+    /**
+     * 開始選牌：只有 tiles 裡的牌能點，其他手牌蓋上遮罩。first 是已經選好、要留著不蓋的牌。
+     * marked 時能點的牌另外加上金框。
+     */
+    void startPick(Set<Tile> tiles, Tile first, Consumer<Tile> onPick, boolean marked) {
         discardEnabled = false;
         pickable = tiles;
         picked = first;
+        markPickable = marked;
         this.onPick = onPick;
         hover = -1;
         repaint();
@@ -1558,12 +1565,14 @@ final class TableCanvas {
                                double hitW, boolean faceUp) {
         double drawY = y;
         boolean masked = false;
+        boolean marked = false;
         if (seat == 0) {
             int index = hits.size();
             // 相同的牌只抬起第一張，看起來才是選了一張
             boolean chosen = tile.equals(picked) && hits.stream().noneMatch(hit -> hit.tile().equals(picked));
             addHit(x, y, hitW, h, tile);
             masked = pickable != null && !pickable.contains(tile) && !chosen;
+            marked = markPickable && pickable != null && pickable.contains(tile);
             if (chosen || index == hover) {
                 drawY -= h * .16;
             }
@@ -1575,6 +1584,9 @@ final class TableCanvas {
         }
         if (masked) {
             TilePainter.paintMask(g, x, drawY, w, h);
+        }
+        if (marked) {
+            TilePainter.paintHighlight(g, x, drawY, w, h, Theme.GOLD);
         }
     }
 
@@ -1602,7 +1614,15 @@ final class TableCanvas {
         g.alpha(saved);
     }
 
+    /**
+     * 圈風局風與剩餘張數；連莊時三行一起往上挪，最下面用紅色粗體寫「連 N 拉 N」，和計分表的「莊」同一個紅。
+     * 手機橫向的方框比較小，三行排得比較緊。
+     */
     private void paintCenterLines(Gfx g, double unit, double half) {
+        int streak = round.streak();
+        double labelY = streak == 0 ? -14 : wide ? -17 : -26;
+        double countY = streak == 0 ? 22 : wide ? 5 : 8;
+        double streakY = wide ? 26 : 40;
         g.color(Theme.GOLD);
         double labelSize = 22 * unit;
         g.font(Theme.font(true, labelSize));
@@ -1613,17 +1633,25 @@ final class TableCanvas {
         if (labelWidth > maxWidth) {
             g.font(Theme.font(true, labelSize * maxWidth / labelWidth));
         }
-        drawCenteredLine(g, label, -14 * unit);
+        drawCenteredLine(g, label, labelY * unit);
         g.color(Theme.TEXT);
         double countSize = 16 * unit;
         String count = "剩餘 " + (round.liveTiles() + undealtTiles()) + " 張";
-        g.font(Theme.font(false, countSize));
-        // 橫向的方框比較小，這一行也可能超出去
-        double countWidth = g.textWidth(count);
-        if (countWidth > maxWidth) {
-            g.font(Theme.font(false, countSize * maxWidth / countWidth));
+        drawFittedLine(g, count, false, countSize, maxWidth, countY * unit);
+        if (streak > 0) {
+            g.color(Theme.DEALER_RED);
+            drawFittedLine(g, "連" + streak + "拉" + streak, true, countSize, maxWidth, streakY * unit);
         }
-        drawCenteredLine(g, count, 22 * unit);
+    }
+
+    /** 置中寫一行字，比 maxWidth 寬就縮小到放得下；橫向的方框比較小，字體調大時會超出去。 */
+    private static void drawFittedLine(Gfx g, String text, boolean bold, double size, double maxWidth, double y) {
+        g.font(Theme.font(bold, size));
+        double width = g.textWidth(text);
+        if (width > maxWidth) {
+            g.font(Theme.font(bold, size * maxWidth / width));
+        }
+        drawCenteredLine(g, text, y);
     }
 
     /**

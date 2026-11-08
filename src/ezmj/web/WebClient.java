@@ -121,6 +121,11 @@ final class WebClient {
         send(Messages.discard(waitId, tile));
     }
 
+    /** 打出這張牌並報聽。 */
+    void listen(int waitId, Tile tile) {
+        send(Messages.listen(waitId, tile));
+    }
+
     /** 報聽，listenId 是服務器 canListen 給的編號。 */
     void declareListen(int listenId) {
         send(Messages.declareListen(listenId));

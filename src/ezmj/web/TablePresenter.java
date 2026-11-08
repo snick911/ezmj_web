@@ -3,6 +3,7 @@ package ezmj.web;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -25,6 +26,10 @@ final class TablePresenter {
             ? "輪到你了：點牌抬起，再點一次打出" : "輪到你了：點一張手牌打出";
     private static final String CLAIMED_HINT = Browser.isTouchDevice()
             ? "完了，要打一張牌出去：點牌抬起，再點一次打出" : "完了，要打一張牌出去：點一張手牌";
+    /** 聽牌選牌的提示最多列幾種打法，再多就只說幾種。 */
+    private static final int MAX_LISTED_DISCARDS = 4;
+    /** 每種打法最多列幾張聽的牌，再多就只說幾種。 */
+    private static final int MAX_LISTED_WAITS = 3;
 
     /** 這一桌牌的局面與自己的決定。waitId 分得出決定是不是這次等待的。 */
     interface Table {
@@ -38,6 +43,9 @@ final class TablePresenter {
         boolean isWaiting(int waitId);
 
         void discard(int waitId, Tile tile);
+
+        /** 打出這張牌並報聽，這張牌要是 askTurn 給的 readyDiscards 裡的。 */
+        void discardAndListen(int waitId, Tile tile);
 
         /** 報聽，listenId 是 canListen 給的編號，過期了就沒有作用。 */
         void declareListening(int listenId);
@@ -58,6 +66,8 @@ final class TablePresenter {
     private String promptHint = " ";
     /** 目前等待的編號，分得出按鈕是不是這次等待的。 */
     private int promptId;
+    /** 這次輪到自己時，打哪張牌會聽哪些牌；空的就沒有打牌前的聽牌按鈕。 */
+    private Map<Tile, List<Tile>> readyDiscards = Map.of();
     /** 可以報聽時的編號，沒有時是 0。報聽的按鈕不屬於哪一次等待，等別人打牌或宣告時都在。 */
     private int listenOffer;
     /** 目前動作列上的按鈕，不含報聽。報聽的按鈕出現或消失時用來重畫；選牌或輪到自己時是 null。 */
@@ -285,9 +295,13 @@ final class TablePresenter {
         });
     }
 
-    /** 輪到自己。打牌後聽牌了不用先說，打完服務器會再問要不要報聽。 */
-    void askTurn(int waitId, TurnOptions options) {
+    /**
+     * 輪到自己。readyDiscards 是打哪張牌會聽哪些牌，有的話多一個半透明的聽牌按鈕，按了選要打的牌，打出就報聽；
+     * 一人房間才給。空的話照舊，打牌後聽牌了服務器會再問要不要報聽。
+     */
+    void askTurn(int waitId, TurnOptions options, Map<Tile, List<Tile>> readyDiscards) {
         promptId = waitId;
+        this.readyDiscards = readyDiscards;
         claimAsked = false;
         showTurnActions(options);
     }
@@ -312,11 +326,40 @@ final class TablePresenter {
         if (!options.concealedKongs().isEmpty() || !options.addKongs().isEmpty()) {
             actions.add(promptAction("槓", Theme.BUTTON, () -> pickTurnKong(options)));
         }
+        if (!readyDiscards.isEmpty()) {
+            actions.add(promptAction("聽牌", Theme.RED, () -> pickListenDiscard(options), true));
+        }
         String hint = claimedVerb == null ? TURN_HINT : claimedVerb + CLAIMED_HINT;
         shownActions = null;
         view.showActions(hint, true, actions);
         view.setDiscardPrompt(claimedVerb != null);
         updatePromptHint(hint);
+    }
+
+    /** 按了聽牌：只有打出去會聽牌的牌能點，加上金框，其他蓋上遮罩；點了就打出並報聽。手指點也是一次就打出。 */
+    private void pickListenDiscard(TurnOptions options) {
+        String hint = "聽牌：點一張金框的牌打出　" + listenChoices();
+        shownActions = null;
+        view.showMarkedPick(hint, readyDiscards.keySet(), tile -> table.discardAndListen(promptId, tile),
+                List.of(promptAction("取消", Theme.PANEL_LIGHT, () -> showTurnActions(options))));
+        updatePromptHint(hint);
+    }
+
+    /** 打哪張聽哪些牌，例如「打一萬聽三條、六條　打九筒聽 5 種」；打法太多就只說幾種。 */
+    private String listenChoices() {
+        if (readyDiscards.size() > MAX_LISTED_DISCARDS) {
+            return "（" + readyDiscards.size() + " 種打法）";
+        }
+        return readyDiscards.entrySet().stream()
+                .map(entry -> "打" + entry.getKey().label() + "聽" + waitsLabel(entry.getValue()))
+                .collect(Collectors.joining("　"));
+    }
+
+    private static String waitsLabel(List<Tile> waits) {
+        if (waits.size() > MAX_LISTED_WAITS) {
+            return " " + waits.size() + " 種";
+        }
+        return waits.stream().map(Tile::label).collect(Collectors.joining("、"));
     }
 
     /** 自己的回合選要槓哪張，只有一張能槓就直接槓。 */
@@ -369,12 +412,17 @@ final class TablePresenter {
 
     /** 這次等待的按鈕。倒數到了才按到的話，局面已經往下走，舊按鈕不能再有作用。 */
     private TablePanel.ActionItem promptAction(String label, String color, Runnable action) {
+        return promptAction(label, color, action, false);
+    }
+
+    /** translucent 的按鈕半透明，表示可以用但不一定要按。 */
+    private TablePanel.ActionItem promptAction(String label, String color, Runnable action, boolean translucent) {
         int id = promptId;
         return new TablePanel.ActionItem(label, color, () -> {
             if (table.isWaiting(id)) {
                 action.run();
             }
-        });
+        }, translucent);
     }
 
     void secondsLeft(int seconds) {

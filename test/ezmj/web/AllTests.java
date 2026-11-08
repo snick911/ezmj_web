@@ -63,6 +63,7 @@ public final class AllTests {
         same(Json.write(Messages.joinRoom("K7M2QX")), "{\"type\":\"joinRoom\",\"code\":\"K7M2QX\"}");
         same(Json.write(Messages.discard(3, tile)), "{\"type\":\"discard\",\"waitId\":3,\"tile\":\"5z\"}");
         same(Json.write(Messages.declareListen(7)), "{\"type\":\"declareListen\",\"listenId\":7}");
+        same(Json.write(Messages.listen(3, tile)), "{\"type\":\"listen\",\"waitId\":3,\"tile\":\"5z\"}");
         same(Json.write(Messages.chat("你好")), "{\"type\":\"chat\",\"text\":\"你好\"}");
         same(Json.write(Messages.kong(3, tile)), "{\"type\":\"kong\",\"waitId\":3,\"tile\":\"5z\"}");
         same(Json.write(Messages.selfWin(3)), "{\"type\":\"selfWin\",\"waitId\":3}");

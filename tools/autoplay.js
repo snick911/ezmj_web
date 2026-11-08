@@ -158,11 +158,12 @@
     }
     const text = hint.innerText;
     const actions = buttons('.action-buttons button');
-    // 打出牌後聽牌了才有這顆，閒著或被問要不要宣告時都可能出現，按一半的機會
+    // 多人的房間打出牌後聽牌了才有這顆，閒著或被問要不要宣告時都可能出現；一人房間是輪到自己、打了會聽牌時就有，
+    // 按了要再點一張金框的牌。都是按一半的機會
     const declare = actions.find((b) => b.innerText === '聽牌');
     if (declare && !S.listenSkipped) {
       if (Math.random() < .5) {
-        press(declare, '報聽');
+        press(declare, declare.classList.contains('translucent-button') ? '打牌前聽牌' : '報聽');
         return;
       }
       S.listenSkipped = true;
@@ -186,7 +187,7 @@
       }
       return;
     }
-    if (text.includes('選要') || text.includes('再選一張')) {
+    if (text.includes('選要') || text.includes('再選一張') || text.includes('點一張金框的牌')) {
       S.clicks['選牌'] = (S.clicks['選牌'] || 0) + 1;
       clickHand();
       return;

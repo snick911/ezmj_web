@@ -14,6 +14,8 @@ final class Theme {
     static final String GOLD = "#E8C05A";
     static final String RED = "#C93A32";
     static final String BUTTON = "#2C6E58";
+    /** 莊家與連莊的紅，和 style.css 的 .dealer-badge 一樣，照 Swing 版的 DealerBadge.RED。 */
+    static final String DEALER_RED = "#E5483D";
 
     private static final String FAMILY = "\"Microsoft JhengHei\", \"PingFang TC\", \"Noto Sans CJK TC\", \"Noto Sans TC\", sans-serif";
     /** 系統有楷書就用系統的，和 Swing 版一樣；沒有時用網頁帶的字型，只有牌面會用到的字。 */

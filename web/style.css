@@ -247,10 +247,11 @@ h1, h2, h3, p { margin: 0; }
   height: 1.375rem;
   justify-content: center;
   line-height: 1;
-  margin-left: .3rem;
-  vertical-align: middle;
   width: 1.375rem;
 }
+/* 連莊時圓圈右邊的連莊次數：紅色粗體，字是直徑的 0.8，和 Swing 版一樣 */
+.dealer-mark { align-items: center; display: inline-flex; gap: .19rem; margin-left: .3rem; vertical-align: middle; }
+.dealer-streak { color: #E5483D; font-size: 1.1rem; font-weight: bold; line-height: 1; }
 
 /* 牌桌 */
 .table-screen { display: flex; height: 100%; }
@@ -288,6 +289,9 @@ h1, h2, h3, p { margin: 0; }
   min-width: 5.5rem;
   padding: .5rem 1.4rem;
 }
+/* 打牌前的聽牌：可以用、但不一定要按，平常半透明不閃，滑鼠移上去或按著才不透明 */
+.translucent-button { box-shadow: none; opacity: .5; transition: opacity .15s; }
+.translucent-button:hover, .translucent-button:active, .translucent-button:focus-visible { opacity: 1; }
 .win-button { animation: win-pulse 1s ease-in-out infinite; }
 @keyframes win-pulse {
   50% { box-shadow: 0 0 1.4rem rgba(255, 220, 120, .95); transform: scale(1.06); }

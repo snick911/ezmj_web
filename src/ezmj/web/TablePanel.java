@@ -36,8 +36,11 @@ final class TablePanel {
     /** 和 style.css 的 .chat-bubble.leaving 一樣長。 */
     private static final int BUBBLE_FADE_MS = 400;
 
-    /** 動作列上的一個按鈕。 */
-    record ActionItem(String label, String color, Runnable run) {
+    /** 動作列上的一個按鈕。translucent 的按鈕半透明，表示可以用但不一定要按。 */
+    record ActionItem(String label, String color, Runnable run, boolean translucent) {
+        ActionItem(String label, String color, Runnable run) {
+            this(label, color, run, false);
+        }
     }
 
     private final HTMLElement root = Dom.el("div", "table-screen");
@@ -394,9 +397,7 @@ final class TablePanel {
             Player player = game.player(seat);
             scoreCells[seat][0].setInnerText(Tile.windName(round.seatWind(seat)));
             if (round.dealer() == seat) {
-                HTMLElement badge = Dom.text("span", "dealer-badge", "莊");
-                badge.setAttribute("title", "莊家");
-                scoreCells[seat][0].appendChild(badge);
+                scoreCells[seat][0].appendChild(dealerBadge(round.streak()));
             }
             scoreCells[seat][1].setInnerText(player.name());
             String traits = game.traits(seat);
@@ -404,6 +405,20 @@ final class TablePanel {
             scoreCells[seat][2].setInnerText(String.valueOf(player.chips()));
         }
         canvas.repaint();
+    }
+
+    /**
+     * 計分表裡莊家的標記：紅色圓圈框住紅字「莊」，連莊時圓圈右邊再寫紅色粗體的連莊次數，照 Swing 版的 DealerBadge。
+     * 滑鼠停著會寫「莊家」或「莊家，連N拉N」。
+     */
+    private static HTMLElement dealerBadge(int streak) {
+        HTMLElement badge = Dom.el("span", "dealer-mark");
+        badge.appendChild(Dom.text("span", "dealer-badge", "莊"));
+        if (streak > 0) {
+            badge.appendChild(Dom.text("span", "dealer-streak", String.valueOf(streak)));
+        }
+        badge.setAttribute("title", streak > 0 ? "莊家，連" + streak + "拉" + streak : "莊家");
+        return badge;
     }
 
     /** 只更新提示文字，按鈕不動。 */
@@ -420,16 +435,28 @@ final class TablePanel {
     /** 進入選牌：只有 tiles 裡的手牌能點，其他蓋上遮罩。first 是已經選好的牌，沒有就是 null。 */
     void showPick(String hintText, Set<Tile> tiles, Tile first, Consumer<Tile> onPick, List<ActionItem> actions) {
         hint.setInnerText(hintText);
-        canvas.startPick(tiles, first, onPick);
+        canvas.startPick(tiles, first, onPick, false);
         setButtons(actions);
     }
 
-    /** 吃碰槓胡這些宣告做得大又醒目，胡與自摸再閃動；過、取消這種淺色的維持原本的大小。 */
+    /** 和 showPick 一樣只有 tiles 裡的手牌能點，這些牌另外加上金框，例如聽牌時打出去會聽牌的牌。 */
+    void showMarkedPick(String hintText, Set<Tile> tiles, Consumer<Tile> onPick, List<ActionItem> actions) {
+        hint.setInnerText(hintText);
+        canvas.startPick(tiles, null, onPick, true);
+        setButtons(actions);
+    }
+
+    /**
+     * 吃碰槓胡這些宣告做得大又醒目，胡與自摸再閃動；過、取消這種淺色的維持原本的大小。
+     * 半透明的按鈕（打牌前的聽牌）和宣告一樣大，但不閃，滑鼠移上去才不透明。
+     */
     private void setButtons(List<ActionItem> actions) {
         Dom.clear(actionButtons);
         for (ActionItem action : actions) {
             HTMLElement button = Dom.button(action.label(), action.color(), action.run());
-            if (Theme.RED.equals(action.color())) {
+            if (action.translucent()) {
+                button.setClassName("btn claim-button translucent-button");
+            } else if (Theme.RED.equals(action.color())) {
                 button.setClassName("btn claim-button win-button");
             } else if (!Theme.PANEL_LIGHT.equals(action.color())) {
                 button.setClassName("btn claim-button");

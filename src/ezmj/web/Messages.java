@@ -77,7 +77,12 @@ final class Messages {
         return object("type", "discard", "waitId", waitId, "tile", tile.code());
     }
 
-    /** 打完牌之後才報聽，舊的 listen（打出並報聽）網頁不再用。 */
+    /** 打出這張牌並報聽，牌要是 askTurn 的 readyDiscards 裡的。一人房間的聽牌按鈕用這個。 */
+    static Map<String, Object> listen(int waitId, Tile tile) {
+        return object("type", "listen", "waitId", waitId, "tile", tile.code());
+    }
+
+    /** 打完牌之後才報聽，多人的房間用這個。 */
     static Map<String, Object> declareListen(int listenId) {
         return object("type", "declareListen", "listenId", listenId);
     }

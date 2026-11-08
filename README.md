@@ -100,7 +100,11 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
   - 牌桌上的泡泡蓋在畫布上，位置由 `TableCanvas.syncChatAnchors` 寫在 CSS 變數 `--chat-x0` 到 `--chat-y3`，和 `--hint-*` 一樣用 `style.setProperty`。
   - 在牌桌上按 Enter 跳出輸入框。按鍵聽整頁的，牌桌換掉之後第一次按鍵時拿掉；游標在輸入框、按鈕或連結上、有 `.backdrop` 或 `.waiting` 蓋著，或輸入法還在選字時不搶。
 - **擲骰子與牌牆**：照 Swing 版，規則與時間見 `ezmj` README 的「擲骰子與牌牆」。服務器沒有送骰子，用 `OnlineGame.dice` 從房號、莊家、圈風、局風與連莊數算，和同桌的 Swing 版一樣；`AllTests` 比對一組固定的點數，算法改了兩邊要一起改。骰子加發牌約 2.4 秒，要在 `roundStart` 的 `dealMs`（3 秒）之內。
-- **報聽**：打出牌後服務器送 `canListen` 才出現「聽牌」按鈕，按了送 `declareListen`。`askTurn` 的 `readyDiscards` 網頁不再用。
+- **聽牌**（程式與協定叫報聽，畫面上一律寫「聽牌」，紀錄裡 `OnlineGame.describe` 的「報聽」也換掉）：照 Swing 版，單機與連線不同。
+  - 跟電腦打的一人房間對應 Swing 版的單機牌局，在打牌之前聽牌：`askTurn` 的 `readyDiscards` 有東西時，動作列多一個半透明的「聽牌」（平常 50% 不透明，滑鼠移上去才不透明，不閃）。按了打出去會聽牌的牌加上金框、其他蓋起來，提示列出打哪張聽哪些牌；點一張就送 `listen`（打出並報聽），「取消」回到一般打牌。沒按就打出去的，服務器照樣送 `canListen`，網頁不理。
+  - 一人房間看 `room` 的真人座位：開局後服務器送的是開局時坐的人，有人離開也不會變，見 `OnlineController.soloTable`。
+  - 多人的房間照舊：打出牌後服務器送 `canListen` 才出現「聽牌」按鈕，按了送 `declareListen`。
+- **連莊**：計分表莊家的圓圈「莊」右邊寫紅色粗體的連莊次數，滑鼠停著寫「莊家，連N拉N」；中央方框在「剩餘 N 張」下面用紅色粗體寫「連N拉N」，三行一起往上挪，手機橫向的方框小，排得比較緊。Swing 版單機在擲骰子前演 1.5 秒的「連莊」大字，網頁的牌局都在服務器上，`dealMs` 只有 3 秒，和 Swing 版連線一樣先不演。
 
 ## 資安
 

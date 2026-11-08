@@ -269,7 +269,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
                 onError(String.valueOf(message.get("code")), String.valueOf(message.get("message")));
                 break;
             case "canListen":
-                if (presenter != null) {
+                // 一人房間在打牌前用聽牌按鈕選牌報聽，沒按就打出去的，打完不再問
+                if (presenter != null && !soloTable()) {
                     presenter.canListen(OnlineGame.parseListenOffer(message));
                 }
                 break;
@@ -507,12 +508,29 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
 
     private void playEvents(List<RoundEvent> events) {
         for (RoundEvent event : events) {
-            String line = game.describe(event);
+            String line = logLine(event);
             if (line != null) {
                 view.appendLog(line);
             }
             presenter.event(event);
         }
+    }
+
+    /** 紀錄的文字。畫面上一律寫「聽牌」，引擎的 OnlineGame.describe 還寫「報聽」，這裡換掉。 */
+    private String logLine(RoundEvent event) {
+        String line = game.describe(event);
+        if (event.type() == RoundEvent.Type.LISTEN && line != null && line.endsWith("報聽")) {
+            return line.substring(0, line.length() - 2) + "聽牌";
+        }
+        return line;
+    }
+
+    /**
+     * 跟電腦打的一人房間，對應 Swing 版的單機牌局：打牌前就能按聽牌。
+     * 開局後 room 的真人座位是開局時坐的人，有人離開也不會變。
+     */
+    private boolean soloTable() {
+        return room != null && room.playing() && room.seats().stream().filter(RoomInfo.Seat::human).count() == 1;
     }
 
     private String idleHint() {
@@ -527,7 +545,9 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         OnlineGame.TurnAsk ask = OnlineGame.parseTurn(message);
         waitId = ask.waitId();
         waiting = true;
-        askAgain = () -> presenter.askTurn(ask.waitId(), ask.options());
+        // 打哪張會聽牌只給一人房間，聽牌按鈕在打牌前就出現；多人的房間照舊，打完牌才問
+        Map<Tile, List<Tile>> ready = soloTable() ? ask.readyDiscards() : Map.of();
+        askAgain = () -> presenter.askTurn(ask.waitId(), ask.options(), ready);
         askAgain.run();
     }
 
@@ -681,6 +701,14 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     public void discard(int id, Tile tile) {
         if (sending(id)) {
             client.discard(id, tile);
+        }
+    }
+
+    /** 一人房間的聽牌按鈕：打出這張並報聽，服務器的 listen。 */
+    @Override
+    public void discardAndListen(int id, Tile tile) {
+        if (sending(id)) {
+            client.listen(id, tile);
         }
     }
 
