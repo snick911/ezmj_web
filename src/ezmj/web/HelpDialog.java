@@ -10,13 +10,17 @@ import org.teavm.jso.dom.html.HTMLElement;
 import ezmj.model.Meld;
 import ezmj.model.Tile;
 import ezmj.model.Wall;
+import ezmj.online.RoomSettings;
 import ezmj.rules.ScoreGuide;
 import ezmj.rules.ScoreResult;
 import ezmj.rules.Scorer;
 import ezmj.rules.WinContext;
 import ezmj.table.TableFlow;
 
-/** 基本規則、台數計算與關於。不擋住牌桌，可以邊看邊打。內容照 Swing 版的 HelpDialog，只拿掉單機才有的部分。 */
+/**
+ * 基本規則、建立牌局、台數計算與關於。不擋住牌桌，可以邊看邊打。內容照 Swing 版的 HelpDialog，只拿掉單機才有的部分；
+ * 建立牌局是網頁版才有的，講大廳的按鈕與設定。
+ */
 final class HelpDialog extends Dialog {
 
     static final String COPYRIGHT = "© 2026 snick911";
@@ -33,6 +37,7 @@ final class HelpDialog extends Dialog {
         card.setClassName("card help-card");
         HTMLElement tabs = Dom.el("div", "button-row");
         tabs.appendChild(Dom.button("基本規則", Theme.BUTTON, this::showRules));
+        tabs.appendChild(Dom.button("建立牌局", Theme.BUTTON, this::showSetup));
         tabs.appendChild(Dom.button("台數計算", Theme.BUTTON, this::showScoring));
         tabs.appendChild(Dom.button("關於", Theme.BUTTON, this::showAbout));
         tabs.appendChild(Dom.button("關閉", Theme.PANEL_LIGHT, this::close));
@@ -140,8 +145,8 @@ final class HelpDialog extends Dialog {
         p("跟電腦打時，輪到你打牌，如果打出某張牌就會聽牌，下方會多一個半透明的「聽牌」按鈕。按下後，打出去會聽牌的牌加上金框，"
                 + "其他牌蓋起來不能選，提示會列出打哪張聽哪些牌；點一張金框的牌打出就聽牌，按「取消」可以回去照常打牌。"
                 + "沒按聽牌就打出去的，這一輪就不能聽牌了。");
-        p("多人的房間還是照常打牌，打出之後如果已經聽牌，下方會出現「聽牌」按鈕，一直到你下一次摸牌、吃碰槓或這局結束，"
-                + "放棄別家打出的牌不影響。");
+        p("多人的房間與專家模式沒有打牌前的提示，照常打牌，打出之後如果已經聽牌，下方會出現「聽牌」按鈕，"
+                + "一直到你下一次摸牌、吃碰槓或這局結束，放棄別家打出的牌不影響。專家模式聽牌之後也不列出等哪些牌，要自己記。");
         p("聽牌之後自動摸牌打牌，胡的牌來了就自動胡，也不再吃、碰、槓，這一局不能取消。");
         p("聽牌是公開的，全桌都看得到，你的名字旁會有圓圈的「聽」。胡的時候多算「聽牌」1 台，自摸或胡別家的牌都算，"
                 + "也算在牌型台數裡。電腦也會聽牌：初學者不會，其他等級看手牌與局勢決定。");
@@ -150,11 +155,59 @@ final class HelpDialog extends Dialog {
         page.setScrollTop(0);
     }
 
+    /** 大廳的按鈕、建立牌局的每個設定與專家模式。設定的範圍照 RoomSettings 與大廳的選單。 */
+    private void showSetup() {
+        Dom.clear(page);
+        h2("開始之前");
+        p("先在大廳最上面填名字，最多 16 字。名字會顯示在牌桌上，牌局打完也用這個名字記在榮譽榜。");
+        h2("跟電腦打");
+        p("按「跟電腦打」，選好設定按「開始牌局」，就開一間只有你一個人的房間，由服務器補三家電腦，馬上開打。"
+                + "這間房間是私人的，不列在大廳，別人加不進來。打完一場回到房間，可以再開一場。");
+        h2("開房間");
+        p("按「開房間」，選好設定按「開房間」。開好之後把房號告訴朋友，或等大廳上的人加入；房主按「開始牌局」才開打，"
+                + "不到四人時空的座位由電腦補上。");
+        list("房間名稱：最多 " + RoomSettings.MAX_NAME_LENGTH + " 字，空白就用「你的名字的房間」。",
+                "私人房間：勾了就不列在大廳，只能用房號加入。");
+        h2("加入房間");
+        p("大廳的「公開的房間」列出還在等人的房間，選一間按「加入」，或連點兩下。私人房間不在列表上，要在「用房號加入」填六碼房號。");
+        h2("設定");
+        p("跟電腦打與開房間跳出來的設定一樣，選過的值會留到重新整理網頁為止：");
+        list("籌碼本金：每個人開局時的籌碼。東南西北四圈打完，或有人籌碼輸光，牌局就結束。",
+                "底、每台：每位付款者付「底 ＋ 台數 × 每台」，見「台數計算」。兩個都不能大於籌碼本金，太大時送出的按鈕不能按。",
+                "補位電腦：依序是補位電腦 1、2、3，也就是房主的右家、對家、左家，各選一個等級：初學者、一般、業餘、職業。"
+                        + "四個等級拿到的牌與規則都一樣，差別只在看多少資訊、想多少。開房間時有真人坐的座位用不到。",
+                "等待秒數：輪到你打牌，或問你要不要吃、碰、槓、胡時，最多等幾秒，" + RoomSettings.MIN_WAIT_SECONDS + " 到 "
+                        + RoomSettings.MAX_WAIT_SECONDS + "，提示後面會倒數。時間到就替你打出最右邊的牌，還沒決定的宣告算過。",
+                "電腦速度：慢、中、快，是電腦出牌前與等宣告時停多久，只影響節奏，不影響牌局結果。",
+                "專家模式：只有跟電腦打才有，見下面。");
+        h2("專家模式");
+        p("跟電腦打的設定可以勾選專家模式：" + OnlinePanel.EXPERT_SUMMARY + "。規則與台數都一樣，只是要記得更多。");
+        list("打牌前沒有「聽牌」按鈕。照常打牌，打出之後已經聽牌，下方才出現「聽牌」，一直到你下一次摸牌、吃碰槓或這局結束。",
+                "聽牌之後提示只寫「【聽牌中】」，不列出等哪些牌。",
+                "右側的紀錄只顯示最新一則，不能展開。",
+                "牌河每家只留最後打出的那一張，畫在第一格，被吃碰槓胡走就不見了。",
+                "牌桌中間不寫剩幾張。");
+        p("關掉網頁再按「接回牌局」，照樣是專家模式。開房間的多人牌局還沒有專家模式。");
+        h2("接回牌局");
+        p("牌局中關掉網頁或斷線太久，回到大廳時會有「接回牌局（房號 …）」，按了就回到原本的座位，這段時間由電腦代打。"
+                + "按了「離開牌局」、牌局已經結束，或全桌都斷線太久房間關了，就接不回來。");
+        page.setScrollTop(0);
+    }
+
+    /** 一串項目。 */
+    private void list(String... items) {
+        HTMLElement list = Dom.el("ul", "");
+        for (String item : items) {
+            list.appendChild(Dom.text("li", "", item));
+        }
+        page.appendChild(list);
+    }
+
     private void showScoring() {
         Dom.clear(page);
         h2("每位付款者付多少");
         page.appendChild(Dom.text("p", "formula", "底 ＋ 台數 × 每台"));
-        p("底與每台在開房間時選擇。台數是牌型台數的總和，再加上莊家台：");
+        p("底與每台在建立牌局時選擇，見「建立牌局」。台數是牌型台數的總和，再加上莊家台：");
         HTMLElement dealer = Dom.el("ul", "");
         dealer.appendChild(Dom.text("li", "", "胡牌者或付款者是莊家時，這筆付款加莊家 1 台。"));
         dealer.appendChild(Dom.text("li", "", "莊家連莊時再加連 N 拉 N，也就是連莊次數 × 2 台。"));

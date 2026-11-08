@@ -89,6 +89,11 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     private boolean finishing;
     /** 跟電腦打：房間開好就直接開局。 */
     private boolean startWhenRoomReady;
+    /**
+     * 專家模式，只有跟電腦打才會是 true：打牌前沒有聽牌提示，打完才問；聽牌中不列出等的牌；
+     * 紀錄只留一筆；棄牌每家只看得到最後一張；中央不寫剩幾張。服務器不知道，存在 WebProfile 裡。
+     */
+    private boolean expert;
     /** 送出開局了，還沒看到牌桌。這時房間又有變化也要繼續等。 */
     private boolean starting;
     private Dialog openDialog;
@@ -105,9 +110,10 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         login(name, () -> client.createRoom(roomSettings));
     }
 
-    /** 一人房間，由服務器補三家電腦。 */
-    void playBots(String name, RoomSettings roomSettings) {
+    /** 一人房間，由服務器補三家電腦。expert 是專家模式。 */
+    void playBots(String name, RoomSettings roomSettings, boolean expert) {
         startWhenRoomReady = true;
+        this.expert = expert;
         createRoom(name, roomSettings);
     }
 
@@ -125,6 +131,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     /** 接回關掉網頁之前的牌局。 */
     void resume(WebProfile saved) {
         profile = saved;
+        expert = saved.expert();
         client = new WebClient(serverUrl, this);
         client.loginWithToken(saved.token());
     }
@@ -269,8 +276,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
                 onError(String.valueOf(message.get("code")), String.valueOf(message.get("message")));
                 break;
             case "canListen":
-                // 一人房間在打牌前用聽牌按鈕選牌報聽，沒按就打出去的，打完不再問
-                if (presenter != null && !soloTable()) {
+                // 一人房間在打牌前用聽牌按鈕選牌報聽，沒按就打出去的，打完不再問；專家模式沒有打牌前的提示，打完才問
+                if (presenter != null && (!soloTable() || expert)) {
                     presenter.canListen(OnlineGame.parseListenOffer(message));
                 }
                 break;
@@ -336,7 +343,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
                 openTable(info);
             }
             game.applyRoom(info);
-            profile = profile.withGame(client.token(), info.code());
+            profile = profile.withGame(client.token(), info.code(), expert);
             profile.save();
             if (roundBound) {
                 view.refresh(game, game);
@@ -375,6 +382,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         view = new TablePanel(presenter::humanDiscard, this::confirmLeave, () -> host.showHistory(game),
                 host::showSettings, host::showHelp);
         presenter.attach(view);
+        view.setExpert(expert);
         view.showRoomCode(info.code());
         // 連線的牌桌都有聊天，跟電腦打的一人房間也有，只是沒有人回
         view.setChat(client::chat);
@@ -545,8 +553,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         OnlineGame.TurnAsk ask = OnlineGame.parseTurn(message);
         waitId = ask.waitId();
         waiting = true;
-        // 打哪張會聽牌只給一人房間，聽牌按鈕在打牌前就出現；多人的房間照舊，打完牌才問
-        Map<Tile, List<Tile>> ready = soloTable() ? ask.readyDiscards() : Map.of();
+        // 打哪張會聽牌只給一人房間，聽牌按鈕在打牌前就出現；多人的房間與專家模式照舊，打完牌才問
+        Map<Tile, List<Tile>> ready = soloTable() && !expert ? ask.readyDiscards() : Map.of();
         askAgain = () -> presenter.askTurn(ask.waitId(), ask.options(), ready);
         askAgain.run();
     }
@@ -680,6 +688,11 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     @Override
     public List<Tile> listeningWaits() {
         return game.listeningWaits();
+    }
+
+    @Override
+    public boolean isExpert() {
+        return expert;
     }
 
     @Override

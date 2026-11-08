@@ -34,12 +34,15 @@ final class OnlinePanel implements LobbyBrowser.View {
     /** 每一欄另外加的樣式，很窄的手機放不下時藏掉等待秒數。 */
     private static final String[] COLUMN_CLASSES = {"name", "host", "", "", "wait"};
     private static final String LOADING = "正在讀取房間列表，服務器閒置後第一次可能要等一分鐘…";
+    /** 專家模式說的是哪些不一樣，設定視窗與說明都用這句，和 Swing 版的 StartPanel.EXPERT_SUMMARY 一樣。 */
+    static final String EXPERT_SUMMARY = "沒有聽牌提示，紀錄只留一筆，棄牌每家只看得到最後一張，也不顯示剩幾張";
 
     /** 按鈕送出的要求。name 檢查過了。 */
     interface Actions {
         void create(String name, RoomSettings settings);
 
-        void playBots(String name, RoomSettings settings);
+        /** expert 是專家模式，只有網頁這邊知道。 */
+        void playBots(String name, RoomSettings settings, boolean expert);
 
         void join(String name, String code);
 
@@ -61,6 +64,7 @@ final class OnlinePanel implements LobbyBrowser.View {
     private final HTMLInputElement codeField = input(ROOM_CODE_LENGTH);
     private final HTMLInputElement roomNameField = input(RoomSettings.MAX_NAME_LENGTH);
     private final HTMLInputElement privateBox = checkbox();
+    private final HTMLInputElement expertBox = checkbox();
     private final HTMLSelectElement chipBox = numberSelect(CHIP_OPTIONS, 20_000);
     private final HTMLSelectElement baseBox = numberSelect(BASE_OPTIONS, 100);
     private final HTMLSelectElement taiBox = numberSelect(TAI_OPTIONS, 20);
@@ -85,6 +89,8 @@ final class OnlinePanel implements LobbyBrowser.View {
     private final HTMLElement setupForm = Dom.el("div", "setup-form");
     private HTMLElement roomNameRow;
     private HTMLElement privateRow;
+    /** 專家模式只有跟電腦打才有：服務器不知道專家模式，多人的房間每個人看到的會不一樣。 */
+    private HTMLElement expertRow;
     private final HTMLButtonElement setupConfirm;
     /** 跳出來的設定視窗，沒有開著就是 null。 */
     private Dialog setupDialog;
@@ -95,7 +101,7 @@ final class OnlinePanel implements LobbyBrowser.View {
     /** 和 rooms 同樣的順序。 */
     private final List<HTMLElement> roomRows = new ArrayList<>();
     private String selectedCode;
-    private WebProfile profile = new WebProfile("", null, null);
+    private WebProfile profile = new WebProfile("", null, null, false);
     private boolean busy;
 
     OnlinePanel(Actions actions, String version, String serverUrl) {
@@ -228,6 +234,14 @@ final class OnlinePanel implements LobbyBrowser.View {
         addRow(setupForm, "等待秒數（" + RoomSettings.MIN_WAIT_SECONDS + " 到 " + RoomSettings.MAX_WAIT_SECONDS + "）",
                 waitField);
         addRow(setupForm, "電腦速度", speedBox);
+        // 勾選框旁邊寫著專家模式有哪些不一樣，點字也能勾
+        expertRow = Dom.el("label", "form-row expert-row");
+        expertRow.appendChild(Dom.text("span", "", "專家模式"));
+        HTMLElement expertChoice = Dom.el("span", "expert-choice");
+        expertChoice.appendChild(expertBox);
+        expertChoice.appendChild(Dom.text("span", "muted", EXPERT_SUMMARY));
+        expertRow.appendChild(expertChoice);
+        setupForm.appendChild(expertRow);
         setupForm.appendChild(stakesHint);
         // Esc 收起視窗；兩個文字框按 Enter 就送出，輸入法還在選字時不算
         setupForm.addEventListener("keydown", event -> {
@@ -254,6 +268,7 @@ final class OnlinePanel implements LobbyBrowser.View {
         setupSolo = solo;
         Dom.visible(roomNameRow, !solo);
         Dom.visible(privateRow, !solo);
+        Dom.visible(expertRow, solo);
         setupConfirm.setInnerText(solo ? "開始牌局" : "開房間");
         Dialog dialog = new Dialog(true);
         dialog.card.setClassName("card setup-card");
@@ -288,7 +303,7 @@ final class OnlinePanel implements LobbyBrowser.View {
         RoomSettings chosen = settings(solo);
         closeSetup();
         if (solo) {
-            actions.playBots(name(), chosen);
+            actions.playBots(name(), chosen, expertBox.isChecked());
         } else {
             actions.create(name(), chosen);
         }

@@ -107,9 +107,9 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
     }
 
     @Override
-    public void playBots(String name, RoomSettings roomSettings) {
+    public void playBots(String name, RoomSettings roomSettings, boolean expert) {
         connecting(OnlineController.STARTING);
-        controller.playBots(name, roomSettings);
+        controller.playBots(name, roomSettings, expert);
     }
 
     @Override

@@ -270,6 +270,10 @@ final class TableCanvas {
     private RoundEvent lastEvent;
     /** 各座位報聽動畫開始的時間，0 表示沒有在演。 */
     private final double[] listenStart = new double[4];
+    /** 專家模式：棄牌每家只畫最後一張，中央不寫剩幾張。 */
+    private boolean expert;
+    /** 各家上次打出牌時牌河的張數。之後少了就是那張被拿走了，專家模式就不再畫它。 */
+    private final int[] shownDiscards = new int[4];
     /** 吃碰槓後要打牌，手牌外框亮起。 */
     private boolean discardPrompt;
     private double promptStart;
@@ -327,10 +331,27 @@ final class TableCanvas {
         flights.clear();
         banners.clear();
         Arrays.fill(listenStart, 0);
+        Arrays.fill(shownDiscards, 0);
         discardPrompt = false;
         dealStart = 0;
         lastEvent = null;
         repaint();
+    }
+
+    /** 專家模式：棄牌每家只畫最後一張，畫在牌河的第一格，看不出打了幾張；中央不寫剩幾張。 */
+    void setExpert(boolean on) {
+        expert = on;
+        repaint();
+    }
+
+    /**
+     * 有沒有動畫都會收到。打出牌時記下牌河的張數，之後少了就是被拿走了，專家模式就不再畫它。
+     * 重連或接回時還沒記到，各家打出下一張才看得到。
+     */
+    void noteEvent(RoundEvent event) {
+        if (event.type() == RoundEvent.Type.DISCARD && round != null && event.seat() >= 0) {
+            shownDiscards[event.seat()] = round.player(event.seat()).discards().size();
+        }
     }
 
     /** 吃碰槓之後要打一張牌：自己的手牌外框一明一暗，直到打出牌。 */
@@ -773,7 +794,8 @@ final class TableCanvas {
                 }
             }
         }
-        int index = round.player(seat).discards().size() - 1;
+        // 專家模式只畫最後一張，放在第一格
+        int index = expert ? 0 : round.player(seat).discards().size() - 1;
         Point to = discardCenter(seat, index);
         Point from = toTable(seat, fromX, fromY);
         Point target = toTable(seat, to.x(), to.y());
@@ -796,7 +818,7 @@ final class TableCanvas {
             meldX += earlier.tiles().size() * row.step() + row.gap();
         }
 
-        Point slot = discardCenter(event.from(), round.player(event.from()).discards().size());
+        Point slot = discardCenter(event.from(), expert ? 0 : round.player(event.from()).discards().size());
         Point from = toTable(event.from(), slot.x(), slot.y());
         double tileX = meldX + tileIndex * row.step();
         Point to = toTable(seat, row.placeX(tileX) + row.tileW() / 2, row.placeY(tileX) + row.tileH() / 2);
@@ -1384,6 +1406,18 @@ final class TableCanvas {
         double startY = discardTop(unit);
         List<Tile> discards = player.discards();
         boolean lastHidden = flying(Slot.DISCARD, seat, -1);
+        if (expert) {
+            // 只畫最後打出、還沒被拿走的那張，放在第一格
+            int count = discards.size();
+            if (count == 0 || count != shownDiscards[seat] || lastHidden) {
+                return;
+            }
+            TilePainter.paintFace(g, discards.get(count - 1), startX, startY, tileW - 1, tileH - 1);
+            if (round.phase() == Round.Phase.CLAIMS && !round.isRobbing() && round.discarder() == seat) {
+                TilePainter.paintHighlight(g, startX, startY, tileW - 1, tileH - 1, Theme.RED);
+            }
+            return;
+        }
         for (int i = 0; i < discards.size(); i++) {
             if (lastHidden && i == discards.size() - 1) {
                 break;
@@ -1616,13 +1650,14 @@ final class TableCanvas {
 
     /**
      * 圈風局風與剩餘張數；連莊時三行一起往上挪，最下面用紅色粗體寫「連 N 拉 N」，和計分表的「莊」同一個紅。
-     * 手機橫向的方框比較小，三行排得比較緊。
+     * 手機橫向的方框比較小，三行排得比較緊。專家模式不寫剩幾張，照 Swing 版的位置。
      */
     private void paintCenterLines(Gfx g, double unit, double half) {
         int streak = round.streak();
-        double labelY = streak == 0 ? -14 : wide ? -17 : -26;
+        // 專家模式不寫剩幾張，其他行往中間靠
+        double labelY = expert ? (streak == 0 ? 8 : -10) : streak == 0 ? -14 : wide ? -17 : -26;
         double countY = streak == 0 ? 22 : wide ? 5 : 8;
-        double streakY = wide ? 26 : 40;
+        double streakY = expert ? 24 : wide ? 26 : 40;
         g.color(Theme.GOLD);
         double labelSize = 22 * unit;
         g.font(Theme.font(true, labelSize));
@@ -1634,10 +1669,12 @@ final class TableCanvas {
             g.font(Theme.font(true, labelSize * maxWidth / labelWidth));
         }
         drawCenteredLine(g, label, labelY * unit);
-        g.color(Theme.TEXT);
         double countSize = 16 * unit;
-        String count = "剩餘 " + (round.liveTiles() + undealtTiles()) + " 張";
-        drawFittedLine(g, count, false, countSize, maxWidth, countY * unit);
+        if (!expert) {
+            g.color(Theme.TEXT);
+            String count = "剩餘 " + (round.liveTiles() + undealtTiles()) + " 張";
+            drawFittedLine(g, count, false, countSize, maxWidth, countY * unit);
+        }
         if (streak > 0) {
             g.color(Theme.DEALER_RED);
             drawFittedLine(g, "連" + streak + "拉" + streak, true, countSize, maxWidth, streakY * unit);

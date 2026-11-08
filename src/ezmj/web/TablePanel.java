@@ -54,6 +54,8 @@ final class TablePanel {
     private final HTMLElement[][] scoreCells = new HTMLElement[4][];
     private final HTMLElement logArea = Dom.el("div", "log");
     private boolean logExpanded;
+    /** 專家模式：紀錄一直只顯示最新一則，不能展開。 */
+    private boolean logLocked;
     /** 紀錄收起來時只顯示最新一則。 */
     private final HTMLElement latestLog = Dom.text("span", "log-latest", " ");
     /** 箭頭是 CSS 畫的，按鈕本身沒有字，說明放在 title 與 aria-label。 */
@@ -267,8 +269,27 @@ final class TablePanel {
         return chatBox;
     }
 
+    /**
+     * 專家模式：紀錄收起來只留最新一則，展開的箭頭藏起來；牌桌的棄牌每家只留最後一張，中間不寫剩幾張。
+     * 一般模式照舊。
+     */
+    void setExpert(boolean on) {
+        logLocked = on;
+        Dom.visible(logToggle, !on);
+        setLogExpanded(false);
+        canvas.setExpert(on);
+    }
+
+    /** 每個事件都會送來，有沒有動畫都一樣。 */
+    void noteEvent(RoundEvent event) {
+        canvas.noteEvent(event);
+    }
+
     /** 紀錄一律預設收起來，只留「紀錄」那一行，空出來的地方給聊天。箭頭朝下是展開，朝上是收合。 */
     void setLogExpanded(boolean expanded) {
+        if (logLocked && expanded) {
+            return;
+        }
         logExpanded = expanded;
         Dom.visible(logArea, expanded);
         Dom.visible(latestLog, !expanded);

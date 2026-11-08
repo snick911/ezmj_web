@@ -40,6 +40,9 @@ final class TablePresenter {
         /** 自己報聽後等的牌，沒有報聽時是 null。 */
         List<Tile> listeningWaits();
 
+        /** 專家模式：聽牌中不列出等哪些牌。 */
+        boolean isExpert();
+
         boolean isWaiting(int waitId);
 
         void discard(int waitId, Tile tile);
@@ -136,6 +139,8 @@ final class TablePresenter {
 
     void event(RoundEvent event) {
         track(event);
+        // 有沒有動畫都要讓牌桌知道，專家模式靠這個決定棄牌要不要顯示
+        view.noteEvent(event);
         boolean animated = settings.animation;
         if (animated) {
             view.animate(event);
@@ -502,7 +507,9 @@ final class TablePresenter {
     private String status() {
         List<Tile> waits = table.listeningWaits();
         if (waits != null) {
-            return "【聽牌中：等 " + waits.stream().map(Tile::label).collect(Collectors.joining("、")) + "】";
+            // 專家模式等哪些牌要自己記
+            return table.isExpert() ? "【聽牌中】"
+                    : "【聽牌中：等 " + waits.stream().map(Tile::label).collect(Collectors.joining("、")) + "】";
         }
         return "";
     }
