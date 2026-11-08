@@ -199,6 +199,19 @@ h1, h2, h3, p { margin: 0; }
   font-weight: bold;
   padding: .1rem .45rem;
 }
+/* 專家模式的房間：房間畫面標在名稱旁，大廳的列表標在房間名稱後面 */
+.expert-badge {
+  background: #8A5A12;
+  border: 1px solid var(--gold);
+  border-radius: 3px;
+  color: #fff;
+  font-size: .8rem;
+  font-weight: bold;
+  margin-left: .4rem;
+  padding: .05rem .4rem;
+  white-space: nowrap;
+}
+.room-name .expert-badge { font-size: .875rem; margin-left: 0; padding: .1rem .45rem; }
 .code-line { font-size: 1.1rem; font-weight: bold; }
 
 /* 大廳的房間列表：用掉卡片剩下的高度，房間多了自己捲動，畫面不會跟著跳 */

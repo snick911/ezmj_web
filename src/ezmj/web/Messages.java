@@ -39,13 +39,18 @@ final class Messages {
         return object("type", "hello", "protocol", PROTOCOL, "token", token);
     }
 
-    static Map<String, Object> createRoom(RoomSettings settings) {
+    /** expert 是專家模式，ezmjService 0.7.0 起才認得，更舊的服務器不理這個欄位。 */
+    static Map<String, Object> createRoom(RoomSettings settings, boolean expert) {
         List<String> levels = new ArrayList<>();
         settings.botLevels().forEach(level -> levels.add(level.name()));
         return object("type", "createRoom", "chips", settings.chips(), "basePay", settings.basePay(),
                 "taiPay", settings.taiPay(), "botLevels", levels, "waitSeconds", settings.waitSeconds(),
-                "speed", settings.speed().name(), "name", settings.name(), "private", settings.privateRoom());
+                "speed", settings.speed().name(), "name", settings.name(), "private", settings.privateRoom(),
+                "expert", expert);
     }
+
+    /** 網頁會照專家模式藏資訊，所以告訴服務器可以讓我們加入專家模式的房間。 */
+    private static final List<String> SUPPORTS = List.of("expert");
 
     /** 不用登入。 */
     static Map<String, Object> listRooms() {
@@ -58,7 +63,7 @@ final class Messages {
     }
 
     static Map<String, Object> joinRoom(String code) {
-        return object("type", "joinRoom", "code", code);
+        return object("type", "joinRoom", "code", code, "supports", SUPPORTS);
     }
 
     static Map<String, Object> leave() {

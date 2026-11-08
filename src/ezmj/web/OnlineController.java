@@ -90,10 +90,15 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     /** 跟電腦打：房間開好就直接開局。 */
     private boolean startWhenRoomReady;
     /**
-     * 專家模式，只有跟電腦打才會是 true：打牌前沒有聽牌提示，打完才問；聽牌中不列出等的牌；
-     * 紀錄只留一筆；棄牌每家只看得到最後一張；中央不寫剩幾張。服務器不知道，存在 WebProfile 裡。
+     * 這間房間是專家模式：打牌前沒有聽牌提示，打完才問；聽牌中不列出等的牌；紀錄只留一筆；
+     * 棄牌每家只看得到最後一張；中央不寫剩幾張。照 room 的 options.expert，開房間時決定，之後不會變。
      */
     private boolean expert;
+    /**
+     * 自己開房間時勾的專家模式，接回時是上次記下的。ezmjService 0.6.0 和更早的版本不認得專家模式，
+     * room 的 options 沒有 expert，這時只有一人房間照這個打，多人的房間每個人看到的會不一樣，就不開。
+     */
+    private boolean requestedExpert;
     /** 送出開局了，還沒看到牌桌。這時房間又有變化也要繼續等。 */
     private boolean starting;
     private Dialog openDialog;
@@ -106,15 +111,16 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         this.profile = WebProfile.load();
     }
 
-    void createRoom(String name, RoomSettings roomSettings) {
-        login(name, () -> client.createRoom(roomSettings));
+    /** expert 是專家模式，房間的每個人都照這個打。 */
+    void createRoom(String name, RoomSettings roomSettings, boolean expert) {
+        requestedExpert = expert;
+        login(name, () -> client.createRoom(roomSettings, expert));
     }
 
-    /** 一人房間，由服務器補三家電腦。expert 是專家模式。 */
+    /** 一人房間，由服務器補三家電腦。 */
     void playBots(String name, RoomSettings roomSettings, boolean expert) {
         startWhenRoomReady = true;
-        this.expert = expert;
-        createRoom(name, roomSettings);
+        createRoom(name, roomSettings, expert);
     }
 
     void joinRoom(String name, String code) {
@@ -131,7 +137,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     /** 接回關掉網頁之前的牌局。 */
     void resume(WebProfile saved) {
         profile = saved;
-        expert = saved.expert();
+        requestedExpert = saved.expert();
         client = new WebClient(serverUrl, this);
         client.loginWithToken(saved.token());
     }
@@ -269,9 +275,12 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
 
     private void dispatch(Map<String, Object> message) {
         switch (String.valueOf(message.get("type"))) {
-            case "room":
-                onRoom(RoomInfo.parse(message));
+            case "room": {
+                RoomInfo info = RoomInfo.parse(message);
+                expert = roomExpert(message, info);
+                onRoom(info);
                 break;
+            }
             case "error":
                 onError(String.valueOf(message.get("code")), String.valueOf(message.get("message")));
                 break;
@@ -323,6 +332,19 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         }
     }
 
+    /**
+     * 房間設定的 expert。RoomInfo 是 ezmj 的，還沒有這個欄位，所以直接看訊息。
+     * 舊服務器沒有這個欄位時，只有自己開的一人房間照自己勾的打。
+     */
+    private boolean roomExpert(Map<String, Object> message, RoomInfo info) {
+        Object options = message.get("options");
+        Object value = options instanceof Map ? ((Map<?, ?>) options).get("expert") : null;
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        return requestedExpert && info.seats().stream().filter(RoomInfo.Seat::human).count() == 1;
+    }
+
     private static String closeReason(String reason) {
         switch (reason) {
             case "empty":         return null;
@@ -372,7 +394,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         if (roomPanel == null) {
             roomPanel = new RoomPanel(this::startGame, this::leaveRoom);
         }
-        roomPanel.setRoom(room);
+        roomPanel.setRoom(room, expert);
         host.showRoom(roomPanel);
     }
 

@@ -118,8 +118,8 @@ final class WebClient {
         roomsMessage = action;
     }
 
-    void createRoom(RoomSettings settings) {
-        send(Messages.createRoom(settings));
+    void createRoom(RoomSettings settings, boolean expert) {
+        send(Messages.createRoom(settings, expert));
     }
 
     void joinRoom(String code) {

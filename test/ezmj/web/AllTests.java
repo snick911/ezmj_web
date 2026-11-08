@@ -60,7 +60,7 @@ public final class AllTests {
         Tile tile = Tile.of(Suit.DRAGON, 1);
         same(Json.write(Messages.helloName("小明")), "{\"type\":\"hello\",\"protocol\":1,\"name\":\"小明\"}");
         same(Json.write(Messages.helloToken("t")), "{\"type\":\"hello\",\"protocol\":1,\"token\":\"t\"}");
-        same(Json.write(Messages.joinRoom("K7M2QX")), "{\"type\":\"joinRoom\",\"code\":\"K7M2QX\"}");
+        same(Json.write(Messages.joinRoom("K7M2QX")), "{\"type\":\"joinRoom\",\"code\":\"K7M2QX\",\"supports\":[\"expert\"]}");
         same(Json.write(Messages.discard(3, tile)), "{\"type\":\"discard\",\"waitId\":3,\"tile\":\"5z\"}");
         same(Json.write(Messages.declareListen(7)), "{\"type\":\"declareListen\",\"listenId\":7}");
         same(Json.write(Messages.listen(3, tile)), "{\"type\":\"listen\",\"waitId\":3,\"tile\":\"5z\"}");
@@ -102,8 +102,10 @@ public final class AllTests {
     private static void createRoomCarriesEveryOption() {
         RoomSettings settings = new RoomSettings(20000, 100, 20,
                 List.of(BotLevel.BEGINNER, BotLevel.NORMAL, BotLevel.PRO), 30, GameSpeed.FAST, "週末牌搭子", true);
-        Map<String, Object> message = Messages.createRoom(settings);
+        Map<String, Object> message = Messages.createRoom(settings, true);
         same(String.valueOf(message.get("type")), "createRoom");
+        same(String.valueOf(message.get("expert")), "true");
+        same(String.valueOf(Messages.createRoom(settings, false).get("expert")), "false");
         same(Json.write(message.get("botLevels")), "[\"BEGINNER\",\"NORMAL\",\"PRO\"]");
         same(String.valueOf(message.get("chips")), "20000");
         same(String.valueOf(message.get("basePay")), "100");

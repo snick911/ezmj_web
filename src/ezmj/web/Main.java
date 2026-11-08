@@ -101,9 +101,9 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
     }
 
     @Override
-    public void create(String name, RoomSettings roomSettings) {
+    public void create(String name, RoomSettings roomSettings, boolean expert) {
         connecting("房間建立中，請耐心等待…");
-        controller.createRoom(name, roomSettings);
+        controller.createRoom(name, roomSettings, expert);
     }
 
     @Override

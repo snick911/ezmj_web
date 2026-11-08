@@ -15,6 +15,7 @@ final class RoomPanel {
     private final HTMLElement root = Dom.el("div", "form-screen");
     private final HTMLElement title = Dom.text("h1", "title", " ");
     private final HTMLElement privateBadge = Dom.text("span", "private-badge", "私人");
+    private final HTMLElement expertBadge = Dom.text("span", "expert-badge", "專家模式");
     private final HTMLElement codeLine = Dom.text("div", "code-line", " ");
     private final HTMLElement listedLine = Dom.text("div", "muted", " ");
     private final HTMLElement settingsLine = Dom.text("div", "muted", " ");
@@ -29,6 +30,8 @@ final class RoomPanel {
         HTMLElement name = Dom.el("div", "room-name");
         name.appendChild(title);
         name.appendChild(privateBadge);
+        expertBadge.setAttribute("title", OnlinePanel.EXPERT_SUMMARY);
+        name.appendChild(expertBadge);
         heading.appendChild(name);
         heading.appendChild(Dom.button("複製房號", Theme.BUTTON, () -> Browser.copy(code)));
         card.appendChild(heading);
@@ -49,8 +52,10 @@ final class RoomPanel {
         return root;
     }
 
-    void setRoom(RoomInfo room) {
+    /** expert 是房間設定的專家模式，RoomInfo 是 ezmj 的，還沒有這個欄位。 */
+    void setRoom(RoomInfo room, boolean expert) {
         code = room.code();
+        Dom.visible(expertBadge, expert);
         RoomSettings settings = room.settings();
         // 舊服務器沒有房間名稱，就和以前一樣用房號當標題
         String name = settings.name();
@@ -77,7 +82,9 @@ final class RoomPanel {
 
         startButton.setDisabled(!room.isHost());
         startButton.setInnerText(room.isHost() ? "開始牌局" : "等房主開局");
-        notice.setInnerText(room.isHost() ? "不到四人時由電腦補滿。" : " ");
+        String text = (room.isHost() ? "不到四人時由電腦補滿。" : "")
+                + (expert ? "專家模式：" + OnlinePanel.EXPERT_SUMMARY + "。" : "");
+        notice.setInnerText(text.isEmpty() ? " " : text);
     }
 
     private static void addSeat(GridTable table, RoomInfo room, int seat) {

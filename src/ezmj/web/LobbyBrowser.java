@@ -1,7 +1,9 @@
 package ezmj.web;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import ezmj.online.OnlineClient;
 import ezmj.online.RoomListing;
@@ -24,6 +26,9 @@ final class LobbyBrowser implements OnlineClient.Listener {
 
         /** 服務器上連著的人數與牌局進行中的房間數。舊服務器沒有送、或拿不到列表時是 -1。 */
         void showActivity(int online, int playingRooms);
+
+        /** 列表上專家模式的房號，在 showRooms 之後才知道。舊服務器沒有這個設定，就是空的。 */
+        void showExpertRooms(Set<String> codes);
     }
 
     private final String url;
@@ -63,11 +68,33 @@ final class LobbyBrowser implements OnlineClient.Listener {
     private void request() {
         if (client == null) {
             client = new WebClient(url, this);
-            client.onRoomsMessage(message -> view.showActivity(count(message, "online"), count(message, "playingRooms")));
+            client.onRoomsMessage(message -> {
+                view.showExpertRooms(expertCodes(message));
+                view.showActivity(count(message, "online"), count(message, "playingRooms"));
+            });
             client.browse();
         } else {
             client.listRooms();
         }
+    }
+
+    /** RoomListing 是 ezmj 的，還沒有專家模式，所以直接看每間的 options.expert。 */
+    static Set<String> expertCodes(Map<String, Object> message) {
+        Set<String> codes = new HashSet<>();
+        Object rooms = message.get("rooms");
+        if (!(rooms instanceof List)) {
+            return codes;
+        }
+        for (Object room : (List<?>) rooms) {
+            if (!(room instanceof Map)) {
+                continue;
+            }
+            Object options = ((Map<?, ?>) room).get("options");
+            if (options instanceof Map && Boolean.TRUE.equals(((Map<?, ?>) options).get("expert"))) {
+                codes.add(String.valueOf(((Map<?, ?>) room).get("code")));
+            }
+        }
+        return codes;
     }
 
     /** 舊服務器沒有這個欄位，就是 -1。 */

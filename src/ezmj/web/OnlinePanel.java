@@ -2,6 +2,7 @@ package ezmj.web;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.teavm.jso.dom.events.KeyboardEvent;
 import org.teavm.jso.dom.html.HTMLButtonElement;
@@ -39,9 +40,9 @@ final class OnlinePanel implements LobbyBrowser.View {
 
     /** 按鈕送出的要求。name 檢查過了。 */
     interface Actions {
-        void create(String name, RoomSettings settings);
+        /** expert 是專家模式，房間裡每個人都照這個打。 */
+        void create(String name, RoomSettings settings, boolean expert);
 
-        /** expert 是專家模式，只有網頁這邊知道。 */
         void playBots(String name, RoomSettings settings, boolean expert);
 
         void join(String name, String code);
@@ -89,8 +90,6 @@ final class OnlinePanel implements LobbyBrowser.View {
     private final HTMLElement setupForm = Dom.el("div", "setup-form");
     private HTMLElement roomNameRow;
     private HTMLElement privateRow;
-    /** 專家模式只有跟電腦打才有：服務器不知道專家模式，多人的房間每個人看到的會不一樣。 */
-    private HTMLElement expertRow;
     private final HTMLButtonElement setupConfirm;
     /** 跳出來的設定視窗，沒有開著就是 null。 */
     private Dialog setupDialog;
@@ -101,6 +100,8 @@ final class OnlinePanel implements LobbyBrowser.View {
     /** 和 rooms 同樣的順序。 */
     private final List<HTMLElement> roomRows = new ArrayList<>();
     private String selectedCode;
+    /** 列表上專家模式的房號，名稱旁邊標「專家」。 */
+    private Set<String> expertCodes = Set.of();
     private WebProfile profile = new WebProfile("", null, null, false);
     private boolean busy;
 
@@ -234,8 +235,9 @@ final class OnlinePanel implements LobbyBrowser.View {
         addRow(setupForm, "等待秒數（" + RoomSettings.MIN_WAIT_SECONDS + " 到 " + RoomSettings.MAX_WAIT_SECONDS + "）",
                 waitField);
         addRow(setupForm, "電腦速度", speedBox);
-        // 勾選框旁邊寫著專家模式有哪些不一樣，點字也能勾
-        expertRow = Dom.el("label", "form-row expert-row");
+        // 勾選框旁邊寫著專家模式有哪些不一樣，點字也能勾。跟電腦打與開房間都有，開房間的話房間裡每個人都是
+        HTMLElement expertRow = Dom.el("label", "form-row expert-row");
+        expertRow.setAttribute("title", "開房間的話，房間裡每個人都照專家模式打");
         expertRow.appendChild(Dom.text("span", "", "專家模式"));
         HTMLElement expertChoice = Dom.el("span", "expert-choice");
         expertChoice.appendChild(expertBox);
@@ -268,7 +270,6 @@ final class OnlinePanel implements LobbyBrowser.View {
         setupSolo = solo;
         Dom.visible(roomNameRow, !solo);
         Dom.visible(privateRow, !solo);
-        Dom.visible(expertRow, solo);
         setupConfirm.setInnerText(solo ? "開始牌局" : "開房間");
         Dialog dialog = new Dialog(true);
         dialog.card.setClassName("card setup-card");
@@ -305,7 +306,7 @@ final class OnlinePanel implements LobbyBrowser.View {
         if (solo) {
             actions.playBots(name(), chosen, expertBox.isChecked());
         } else {
-            actions.create(name(), chosen);
+            actions.create(name(), chosen, expertBox.isChecked());
         }
     }
 
@@ -450,6 +451,15 @@ final class OnlinePanel implements LobbyBrowser.View {
         listStatus.setInnerText(text);
     }
 
+    /** 和上次一樣就不重畫，理由同 showRooms。 */
+    @Override
+    public void showExpertRooms(Set<String> codes) {
+        if (!codes.equals(expertCodes)) {
+            expertCodes = codes;
+            renderRooms();
+        }
+    }
+
     @Override
     public void showActivity(int online, int playingRooms) {
         boolean known = online >= 0 && playingRooms >= 0;
@@ -470,8 +480,13 @@ final class OnlinePanel implements LobbyBrowser.View {
             HTMLElement[] cells = table.row(false, room.name(), room.host(), room.humans() + "/" + SEATS,
                     settings.chips() + "/" + settings.basePay() + "/" + settings.taiPay(), settings.waitSeconds() + " 秒");
             markColumns(cells);
+            boolean expert = expertCodes.contains(room.code());
+            if (expert) {
+                cells[0].appendChild(Dom.text("span", "expert-badge", "專家"));
+            }
             HTMLElement row = (HTMLElement) cells[0].getParentNode();
-            row.setAttribute("title", room.name() + "　房主 " + room.host() + "　電腦速度" + settings.speed().label());
+            row.setAttribute("title", room.name() + "　房主 " + room.host() + "　電腦速度" + settings.speed().label()
+                    + (expert ? "　專家模式" : ""));
             row.addEventListener("click", event -> select(room.code()));
             row.addEventListener("dblclick", event -> {
                 select(room.code());
