@@ -31,6 +31,11 @@ final class WebClient {
     private static final int[] RETRY_DELAYS_MS = {500, 1_000, 2_000, 4_000, 5_000};
     /** 全桌都斷線 2 分鐘服務器就關房間，再等也回不去，所以比那久一點就放棄。 */
     private static final int RETRY_FOR_MS = 180_000;
+    /**
+     * 第一次連線（還沒收到 welcome）連不上時一直重試，到這麼久才放棄。服務器在 Render 重新部署的一分多鐘裡
+     * 會直接拒絕連線，從睡眠醒來時偶爾也會，等一下就好了。
+     */
+    static final int FIRST_CONNECT_FOR_MS = 120_000;
     private static final int CHECK_MS = 5_000;
 
     private final String url;
@@ -47,6 +52,11 @@ final class WebClient {
     private boolean browsing;
     private String token;
     private boolean finished;
+    /** 收過 welcome 了。在那之前斷掉的是第一次連線，照 firstDeadline 重試，不算斷線重連。 */
+    private boolean welcomedOnce;
+    /** 第一次連線的 hello，重試時再送一次。 */
+    private Map<String, Object> firstHello;
+    private double firstDeadline;
     private boolean lostReported;
     private double retryDeadline;
     private int attempt;
@@ -66,15 +76,26 @@ final class WebClient {
         return token;
     }
 
-    /** 用名字登入，第一次進服務器時用。 */
+    /** 用名字登入，第一次進服務器時用。連不上會重試，見 FIRST_CONNECT_FOR_MS。 */
     void loginWithName(String name) {
-        open(Messages.helloName(name));
+        connectFirst(Messages.helloName(name));
     }
 
-    /** 用之前的 token 接回來。 */
+    /** 用之前的 token 接回來。連不上會重試，見 FIRST_CONNECT_FOR_MS。 */
     void loginWithToken(String savedToken) {
         token = savedToken;
-        open(Messages.helloToken(savedToken));
+        connectFirst(Messages.helloToken(savedToken));
+    }
+
+    private void connectFirst(Map<String, Object> hello) {
+        firstHello = hello;
+        firstDeadline = Browser.now() + FIRST_CONNECT_FOR_MS;
+        open(hello);
+    }
+
+    /** 還在第一次連線：要登入，但還沒收過 welcome。只看大廳的連線不重試，大廳自己會再要。 */
+    private boolean connectingFirst() {
+        return !welcomedOnce && !browsing && firstHello != null;
     }
 
     /** 不登入，連上就要一次房間列表。沒有 token，所以斷線不重連，直接通知 closed；錯誤也照一般訊息通知。 */
@@ -245,7 +266,8 @@ final class WebClient {
         }
         double now = Browser.now();
         if (!opened) {
-            if (now - openedAt >= OPEN_TIMEOUT_MS) {
+            // 第一次連線到期限了也不再等這一條，不然最後一次重試會拖到 OPEN_TIMEOUT_MS
+            if (now - openedAt >= OPEN_TIMEOUT_MS || (connectingFirst() && now > firstDeadline)) {
                 dropSocket();
                 lost();
             }
@@ -270,6 +292,15 @@ final class WebClient {
         if (finished) {
             return;
         }
+        if (connectingFirst()) {
+            // 畫面還蓋著「正在喚醒服務器」，不用通知上層，安靜地再試
+            if (Browser.now() > firstDeadline) {
+                finish("連不上服務器，請稍後再試一次。");
+            } else {
+                retryLater();
+            }
+            return;
+        }
         if (token == null) {
             finish(wasOpen ? "連線中斷" : "連不上服務器");
             return;
@@ -284,6 +315,10 @@ final class WebClient {
             finish("重新連線失敗，連不上服務器");
             return;
         }
+        retryLater();
+    }
+
+    private void retryLater() {
         int delay = RETRY_DELAYS_MS[Math.min(attempt++, RETRY_DELAYS_MS.length - 1)];
         retryTimer = Browser.after(delay, () -> {
             retryTimer = -1;
@@ -291,9 +326,10 @@ final class WebClient {
         });
     }
 
+    /** 第一次連線再送一樣的 hello；登入過就用 token 接回來。 */
     private void retry() {
         if (!finished) {
-            open(Messages.helloToken(token));
+            open(connectingFirst() ? firstHello : Messages.helloToken(token));
         }
     }
 
@@ -352,6 +388,8 @@ final class WebClient {
         boolean resumed = token != null;
         token = String.valueOf(welcome.get("token"));
         loggedIn = true;
+        welcomedOnce = true;
+        attempt = 0;
         lostReported = false;
         listener.loggedIn(welcome, resumed);
     }

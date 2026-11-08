@@ -11,9 +11,9 @@ import ezmj.online.ServerAddress;
 /** 網頁的進入點：輸入名字的畫面、房間與牌桌輪流顯示。 */
 public final class Main implements OnlineController.Host, OnlinePanel.Actions {
 
-    /** 連了這麼久還沒回應，多半是免費主機睡著了。 */
+    /** 連了這麼久還沒回應，多半是免費主機睡著了，或正在重新部署，連不上會一直重試，見 WebClient.FIRST_CONNECT_FOR_MS。 */
     private static final int WAKING_NOTICE_MS = 3_000;
-    private static final String WAKING = "正在喚醒服務器，第一次連線最久要等約一分鐘…";
+    private static final String WAKING = "正在喚醒服務器，最久要等一兩分鐘…";
 
     private final HTMLElement app = HTMLDocument.current().getElementById("app");
     private final WebSettings settings = WebSettings.load();
