@@ -30,7 +30,8 @@ final class RoomPanel {
         HTMLElement name = Dom.el("div", "room-name");
         name.appendChild(title);
         name.appendChild(privateBadge);
-        expertBadge.setAttribute("title", OnlinePanel.EXPERT_SUMMARY);
+        // 有哪些不一樣只寫在說明，畫面上只留標籤，和 Swing 版一樣
+        expertBadge.setAttribute("title", "專家模式，每次最多等 " + OnlinePanel.EXPERT_MAX_WAIT_SECONDS + " 秒。有哪些不一樣見「說明」");
         name.appendChild(expertBadge);
         heading.appendChild(name);
         heading.appendChild(Dom.button("複製房號", Theme.BUTTON, () -> Browser.copy(code)));
@@ -82,9 +83,7 @@ final class RoomPanel {
 
         startButton.setDisabled(!room.isHost());
         startButton.setInnerText(room.isHost() ? "開始牌局" : "等房主開局");
-        String text = (room.isHost() ? "不到四人時由電腦補滿。" : "")
-                + (expert ? "專家模式：" + OnlinePanel.EXPERT_SUMMARY + "。" : "");
-        notice.setInnerText(text.isEmpty() ? " " : text);
+        notice.setInnerText(room.isHost() ? "不到四人時由電腦補滿。" : " ");
     }
 
     private static void addSeat(GridTable table, RoomInfo room, int seat) {

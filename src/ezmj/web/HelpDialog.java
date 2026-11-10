@@ -26,6 +26,11 @@ final class HelpDialog extends Dialog {
     static final String COPYRIGHT = "© 2026 snick911";
     static final String LICENSE_URL = "https://www.gnu.org/licenses/agpl-3.0.html";
     private static final String ISSUES_URL = "https://github.com/snick911/ezmj_web/issues";
+    /**
+     * 專家模式有哪些不一樣，只寫在說明的「簡介」與「建立牌局」，設定視窗的勾選框只寫「開啟」。
+     * 和 Swing 版的 StartPanel.EXPERT_SUMMARY 一樣。
+     */
+    static final String EXPERT_SUMMARY = "沒有聽牌提示，紀錄只留一筆，棄牌每家只看得到最後一張，也不顯示剩幾張";
 
     private static final int RULE_TILE_W = 30;
     private static final int EXAMPLE_TILE_W = 24;
@@ -94,7 +99,7 @@ final class HelpDialog extends Dialog {
         return TileStrip.of(groups, tileW, Math.round(tileW * 1.38), Math.round(tileW * .4f));
     }
 
-    /** 打開說明先看到這頁：這個網站是什麼、連線打牌的禮儀與單機版。Swing 版說明的「簡介」寫的是同一件事，改了兩邊一起改。 */
+    /** 打開說明先看到這頁：這個網站是什麼、專家模式、連線打牌的禮儀與單機版。Swing 版說明的「簡介」寫的是同一件事，改了兩邊一起改。 */
     private void showIntro() {
         Dom.clear(page);
         h2("隨時隨地，上桌打一場");
@@ -110,6 +115,11 @@ final class HelpDialog extends Dialog {
                 + "也可以「下載輸贏 PDF」，把每一局的輸贏都記下來，和親友分享這一場的精彩。打完全場、成績亮眼的，名字還會登上大廳的「榮譽榜」。");
         h2("免費，沒有廣告");
         p("EZMJ 完全免費，畫面上沒有廣告，也沒有任何要付費的地方，單純就是打麻將。");
+        h2("想挑戰自己，就開專家模式");
+        p("跟電腦打與開房間的設定都有「專家模式」，勾了「開啟」就換成考驗記性與反應的打法：" + EXPERT_SUMMARY
+                + "，每次最多只等 " + OnlinePanel.EXPERT_MAX_WAIT_SECONDS + " 秒。規則與台數都和平常一樣，"
+                + "等哪幾張、誰打過什麼、牌牆還剩多少，全靠自己記。開房間時勾了，房間裡每個人都照專家模式打。"
+                + "詳細見「建立牌局」的「專家模式」。");
         h2("牌桌禮儀");
         p("網路上開局，對面坐的一樣是真人牌友，禮儀和在實體牌桌上一樣重要：");
         list("最重要的一條：上了桌，就盡可能打完東南西北四圈。中途離開，你的座位只能交給電腦打到最後，同桌的人也跟著掃興；"
@@ -209,13 +219,18 @@ final class HelpDialog extends Dialog {
                 "補位電腦：依序是補位電腦 1、2、3，也就是房主的右家、對家、左家，各選一個等級：初學者、一般、業餘、職業。"
                         + "四個等級拿到的牌與規則都一樣，差別只在看多少資訊、想多少。開房間時有真人坐的座位用不到。",
                 "等待秒數：輪到你打牌，或問你要不要吃、碰、槓、胡時，最多等幾秒，" + RoomSettings.MIN_WAIT_SECONDS + " 到 "
-                        + RoomSettings.MAX_WAIT_SECONDS + "，提示後面會倒數。時間到就替你打出最右邊的牌，還沒決定的宣告算過。",
+                        + RoomSettings.MAX_WAIT_SECONDS + "，提示後面會倒數。時間到就替你打出最右邊的牌，還沒決定的宣告算過。"
+                        + "專家模式最多 " + OnlinePanel.EXPERT_MAX_WAIT_SECONDS + " 秒，勾了專家模式，填得比較長的會自動改成 "
+                        + OnlinePanel.EXPERT_MAX_WAIT_SECONDS + " 秒。",
                 "電腦速度：慢、中、快，是電腦出牌前與等宣告時停多久，只影響節奏，不影響牌局結果。",
                 "專家模式：見下面。開房間時勾了，房間裡每個人都照專家模式打。");
         h2("專家模式");
-        p("跟電腦打與開房間的設定都可以勾選專家模式：" + OnlinePanel.EXPERT_SUMMARY + "。規則與台數都一樣，只是要記得更多。"
+        p("跟電腦打與開房間的設定都可以勾選專家模式：" + EXPERT_SUMMARY + "，每次最多只等 " + OnlinePanel.EXPERT_MAX_WAIT_SECONDS
+                + " 秒。規則與台數都一樣，只是要記得更多、想得更快。設定視窗的勾選框只寫「開啟」，有哪些不一樣都寫在這裡。"
                 + "開房間時勾了，房間裡每個人都照專家模式打，大廳的列表與房間畫面會標出「專家」。");
-        list("打牌前沒有「聽牌」按鈕。照常打牌，打出之後已經聽牌，下方才出現「聽牌」，一直到你下一次摸牌、吃碰槓或這局結束。",
+        list("每次最多等 " + OnlinePanel.EXPERT_MAX_WAIT_SECONDS + " 秒：等待秒數只能選 " + RoomSettings.MIN_WAIT_SECONDS + " 到 "
+                        + OnlinePanel.EXPERT_MAX_WAIT_SECONDS + "，勾了專家模式，填得比較長的會自動改小，取消勾選再改回來。",
+                "打牌前沒有「聽牌」按鈕。照常打牌，打出之後已經聽牌，下方才出現「聽牌」，一直到你下一次摸牌、吃碰槓或這局結束。",
                 "聽牌之後提示只寫「【聽牌中】」，不列出等哪些牌。",
                 "右側的紀錄只顯示最新一則，不能展開。",
                 "牌河每家只留最後打出的那一張，畫在第一格，被吃碰槓胡走就不見了。",

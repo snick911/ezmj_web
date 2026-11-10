@@ -37,8 +37,11 @@ final class OnlinePanel implements LobbyBrowser.View {
     private static final String[] COLUMN_CLASSES = {"name", "host", "", "", "wait"};
     private static final String LOADING = "正在讀取房間列表，服務器閒置後第一次可能要等一分鐘…";
     private static final String STAKES_TOO_HIGH = "底和每台不能大於籌碼本金。";
-    /** 專家模式說的是哪些不一樣，設定視窗與說明都用這句，和 Swing 版的 StartPanel.EXPERT_SUMMARY 一樣。 */
-    static final String EXPERT_SUMMARY = "沒有聽牌提示，紀錄只留一筆，棄牌每家只看得到最後一張，也不顯示剩幾張";
+    /**
+     * 專家模式每次最多等幾秒。和 Swing 版的 GameConfig.EXPERT_MAX_WAIT_SECONDS、服務器的 RoomOptions 一樣，
+     * 服務器也會把比較長的改成這個。
+     */
+    static final int EXPERT_MAX_WAIT_SECONDS = 10;
 
     /** 按鈕送出的要求。name 檢查過了。 */
     interface Actions {
@@ -73,6 +76,10 @@ final class OnlinePanel implements LobbyBrowser.View {
     private final HTMLSelectElement taiBox = numberSelect(TAI_OPTIONS, 20);
     private final List<HTMLSelectElement> levelBoxes = new ArrayList<>();
     private final HTMLInputElement waitField = numberInput();
+    /** 等待秒數的欄名，寫著現在能填的範圍，勾了專家模式就變小。 */
+    private final HTMLElement waitLabel = Dom.text("span", "", " ");
+    /** 勾專家模式時填的秒數比上限長，就記在這裡，取消勾選時還原；沒有就是 null。 */
+    private String waitBeforeExpert;
     private final HTMLSelectElement speedBox = speedSelect();
     private final HTMLElement roomList = Dom.el("div", "room-list");
     private final HTMLElement listStatus = Dom.text("div", "muted", LOADING);
@@ -236,18 +243,23 @@ final class OnlinePanel implements LobbyBrowser.View {
         HTMLElement levelRow = addRow(setupForm, "補位電腦", levels);
         levelRow.setClassName("form-row level-row");
         levelRow.setAttribute("title", "依序是補位電腦 1、2、3，不到四人開局時由電腦補上");
-        addRow(setupForm, "等待秒數（" + RoomSettings.MIN_WAIT_SECONDS + " 到 " + RoomSettings.MAX_WAIT_SECONDS + "）",
-                waitField);
+        HTMLElement waitRow = Dom.el("label", "form-row");
+        waitRow.appendChild(waitLabel);
+        waitRow.appendChild(waitField);
+        setupForm.appendChild(waitRow);
         addRow(setupForm, "電腦速度", speedBox);
-        // 勾選框旁邊寫著專家模式有哪些不一樣，點字也能勾。跟電腦打與開房間都有，開房間的話房間裡每個人都是
+        // 勾選框旁邊只寫「開啟」，點字也能勾；有哪些不一樣寫在說明，和 Swing 版一樣。跟電腦打與開房間都有，開房間的話房間裡每個人都是
         HTMLElement expertRow = Dom.el("label", "form-row expert-row");
-        expertRow.setAttribute("title", "開房間的話，房間裡每個人都照專家模式打");
+        expertRow.setAttribute("title", "每次最多等 " + EXPERT_MAX_WAIT_SECONDS
+                + " 秒；開房間的話房間裡每個人都照專家模式打。有哪些不一樣見「說明」");
         expertRow.appendChild(Dom.text("span", "", "專家模式"));
         HTMLElement expertChoice = Dom.el("span", "expert-choice");
         expertChoice.appendChild(expertBox);
-        expertChoice.appendChild(Dom.text("span", "muted", EXPERT_SUMMARY));
+        expertChoice.appendChild(Dom.text("span", "", "開啟"));
         expertRow.appendChild(expertChoice);
         setupForm.appendChild(expertRow);
+        expertBox.addEventListener("change", event -> syncWaitLimit());
+        syncWaitLimit();
         setupForm.appendChild(stakesHint);
         // Esc 收起視窗；兩個文字框按 Enter 就送出，輸入法還在選字時不算
         setupForm.addEventListener("keydown", event -> {
@@ -313,6 +325,12 @@ final class OnlinePanel implements LobbyBrowser.View {
         }
         if (!stakesValid()) {
             Dialog.message(STAKES_TOO_HIGH, () -> chipBox.focus());
+            return;
+        }
+        if (expertBox.isChecked() && typedWaitSeconds() > EXPERT_MAX_WAIT_SECONDS) {
+            waitField.setValue(String.valueOf(EXPERT_MAX_WAIT_SECONDS));
+            Dialog.message("專家模式每次最多等 " + EXPERT_MAX_WAIT_SECONDS + " 秒，等待秒數改成 " + EXPERT_MAX_WAIT_SECONDS
+                    + " 秒了，確定之後再按一次。", () -> waitField.focus());
             return;
         }
         boolean solo = setupSolo;
@@ -620,14 +638,42 @@ final class OnlinePanel implements LobbyBrowser.View {
                 solo ? "" : roomNameField.getValue().trim(), solo || privateBox.isChecked());
     }
 
-    /** 亂填就回到預設值，超出範圍就夾回去，服務器也會再檢查。 */
+    /** 亂填就回到預設值，超出範圍就夾回去，服務器也會再檢查。專家模式最多 EXPERT_MAX_WAIT_SECONDS 秒。 */
     private int waitSeconds() {
-        int seconds;
+        return Math.max(RoomSettings.MIN_WAIT_SECONDS, Math.min(maxWaitSeconds(), typedWaitSeconds()));
+    }
+
+    /** 欄位裡填的秒數，還沒夾進範圍；亂填就是預設值。 */
+    private int typedWaitSeconds() {
         try {
-            seconds = Integer.parseInt(waitField.getValue().trim());
+            return Integer.parseInt(waitField.getValue().trim());
         } catch (NumberFormatException e) {
-            seconds = DEFAULT_WAIT_SECONDS;
+            return DEFAULT_WAIT_SECONDS;
         }
-        return Math.max(RoomSettings.MIN_WAIT_SECONDS, Math.min(RoomSettings.MAX_WAIT_SECONDS, seconds));
+    }
+
+    private int maxWaitSeconds() {
+        return expertBox.isChecked() ? EXPERT_MAX_WAIT_SECONDS : RoomSettings.MAX_WAIT_SECONDS;
+    }
+
+    /**
+     * 勾了專家模式就把等待秒數的範圍改小，填的比上限長就改成上限，原本的記著；
+     * 取消勾選時，秒數沒動過就還原成原本填的。
+     */
+    private void syncWaitLimit() {
+        int max = maxWaitSeconds();
+        waitLabel.setInnerText("等待秒數（" + RoomSettings.MIN_WAIT_SECONDS + " 到 " + max + "）");
+        waitField.setAttribute("max", String.valueOf(max));
+        if (expertBox.isChecked()) {
+            if (typedWaitSeconds() > max) {
+                waitBeforeExpert = waitField.getValue();
+                waitField.setValue(String.valueOf(max));
+            }
+        } else if (waitBeforeExpert != null) {
+            if (typedWaitSeconds() == EXPERT_MAX_WAIT_SECONDS) {
+                waitField.setValue(waitBeforeExpert);
+            }
+            waitBeforeExpert = null;
+        }
     }
 }
