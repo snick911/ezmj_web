@@ -18,8 +18,8 @@ import ezmj.rules.WinContext;
 import ezmj.table.TableFlow;
 
 /**
- * 基本規則、建立牌局、台數計算與關於。不擋住牌桌，可以邊看邊打。內容照 Swing 版的 HelpDialog，只拿掉單機才有的部分；
- * 建立牌局是網頁版才有的，講大廳的按鈕與設定。
+ * 簡介、基本規則、建立牌局、台數計算與關於。不擋住牌桌，可以邊看邊打。內容照 Swing 版的 HelpDialog，只拿掉單機才有的部分；
+ * 建立牌局是網頁版才有的，講大廳的按鈕與設定。打開時先看簡介。
  */
 final class HelpDialog extends Dialog {
 
@@ -36,6 +36,7 @@ final class HelpDialog extends Dialog {
         super(false);
         card.setClassName("card help-card");
         HTMLElement tabs = Dom.el("div", "button-row");
+        tabs.appendChild(Dom.button("簡介", Theme.BUTTON, this::showIntro));
         tabs.appendChild(Dom.button("基本規則", Theme.BUTTON, this::showRules));
         tabs.appendChild(Dom.button("建立牌局", Theme.BUTTON, this::showSetup));
         tabs.appendChild(Dom.button("台數計算", Theme.BUTTON, this::showScoring));
@@ -43,7 +44,7 @@ final class HelpDialog extends Dialog {
         tabs.appendChild(Dom.button("關閉", Theme.PANEL_LIGHT, this::close));
         card.appendChild(tabs);
         card.appendChild(page);
-        showRules();
+        showIntro();
     }
 
     private void h2(String text) {
@@ -91,6 +92,24 @@ final class HelpDialog extends Dialog {
 
     private static HTMLElement strip(List<TileStrip.Group> groups, int tileW) {
         return TileStrip.of(groups, tileW, Math.round(tileW * 1.38), Math.round(tileW * .4f));
+    }
+
+    /** 打開說明先看到這頁：這個網站是什麼、連線打牌的禮儀與單機版。Swing 版說明的「簡介」寫的是同一件事，改了兩邊一起改。 */
+    private void showIntro() {
+        Dom.clear(page);
+        h2("免費的線上麻將");
+        p("EZMJ 提供一個可以連線打麻將的地方，不受實體場地限制。無須註冊帳號，取個名字就能開桌，直接開、直接玩；"
+                + "把房號傳給親友就能同桌，人不夠由電腦補滿，也可以自己跟電腦打。");
+        p("講求每次都是一場新的開始：不帶著上一場的輸贏，每場都從房間定好的籌碼重新來過。"
+                + "每場結束還是可以留下戰績，把結果圖或輸贏歷程的 PDF 分享給親友。");
+        p("完全免費，沒有廣告。");
+        h2("牌桌禮儀");
+        p("網路上開局也要注意禮儀，最重要的一條：上了桌就盡可能打完四圈。中途離開會掃了同桌的興，斷線的話盡快接回牌局。");
+        p("名字、房間名稱與聊天都不能有不雅的字眼。");
+        h2("單機版");
+        p("另外有可以下載的單機版，提供修業模式，從初出茅廬練起，一場一場累積籌碼、一關一關挑戰高手，鍛鍊自己的麻將技巧；"
+                + "也同時具有連線對戰的功能。");
+        page.setScrollTop(0);
     }
 
     private void showRules() {
@@ -159,21 +178,22 @@ final class HelpDialog extends Dialog {
     private void showSetup() {
         Dom.clear(page);
         h2("開始之前");
-        p("先在大廳最上面填名字，最多 16 字。名字會顯示在牌桌上，牌局打完也用這個名字記在榮譽榜。");
+        p("先在大廳最上面填名字，最多 16 字，不能有不雅的字眼。名字會顯示在牌桌上，牌局打完也用這個名字記在榮譽榜。"
+                + "沒填名字或名字不合就按了跟電腦打、開房間或加入，會跳出提醒。");
         h2("跟電腦打");
         p("按「跟電腦打」，選好設定按「開始牌局」，就開一間只有你一個人的房間，由服務器補三家電腦，馬上開打。"
                 + "這間房間是私人的，不列在大廳，別人加不進來。打完一場回到房間，可以再開一場。");
         h2("開房間");
         p("按「開房間」，選好設定按「開房間」。開好之後把房號告訴朋友，或等大廳上的人加入；房主按「開始牌局」才開打，"
                 + "不到四人時空的座位由電腦補上。");
-        list("房間名稱：最多 " + RoomSettings.MAX_NAME_LENGTH + " 字，空白就用「你的名字的房間」。",
+        list("房間名稱：最多 " + RoomSettings.MAX_NAME_LENGTH + " 字，不能有不雅的字眼，空白就用「你的名字的房間」。",
                 "私人房間：勾了就不列在大廳，只能用房號加入。");
         h2("加入房間");
         p("大廳的「公開的房間」列出還在等人的房間，選一間按「加入」，或連點兩下。私人房間不在列表上，要在「用房號加入」填六碼房號。");
         h2("設定");
         p("跟電腦打與開房間跳出來的設定一樣，選過的值會留到重新整理網頁為止：");
         list("籌碼本金：每個人開局時的籌碼。東南西北四圈打完，或有人籌碼輸光，牌局就結束。",
-                "底、每台：每位付款者付「底 ＋ 台數 × 每台」，見「台數計算」。兩個都不能大於籌碼本金，太大時送出的按鈕不能按。",
+                "底、每台：每位付款者付「底 ＋ 台數 × 每台」，見「台數計算」。兩個都不能大於籌碼本金，太大時設定裡會寫出來，按了送出也會提醒。",
                 "補位電腦：依序是補位電腦 1、2、3，也就是房主的右家、對家、左家，各選一個等級：初學者、一般、業餘、職業。"
                         + "四個等級拿到的牌與規則都一樣，差別只在看多少資訊、想多少。開房間時有真人坐的座位用不到。",
                 "等待秒數：輪到你打牌，或問你要不要吃、碰、槓、胡時，最多等幾秒，" + RoomSettings.MIN_WAIT_SECONDS + " 到 "

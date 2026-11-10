@@ -11,6 +11,7 @@ import org.teavm.jso.dom.html.HTMLInputElement;
 import org.teavm.jso.dom.html.HTMLOptionElement;
 import org.teavm.jso.dom.html.HTMLSelectElement;
 
+import ezmj.model.BadWords;
 import ezmj.model.BotLevel;
 import ezmj.model.GameSpeed;
 import ezmj.online.RoomListing;
@@ -35,6 +36,7 @@ final class OnlinePanel implements LobbyBrowser.View {
     /** 每一欄另外加的樣式，很窄的手機放不下時藏掉等待秒數。 */
     private static final String[] COLUMN_CLASSES = {"name", "host", "", "", "wait"};
     private static final String LOADING = "正在讀取房間列表，服務器閒置後第一次可能要等一分鐘…";
+    private static final String STAKES_TOO_HIGH = "底和每台不能大於籌碼本金。";
     /** 專家模式說的是哪些不一樣，設定視窗與說明都用這句，和 Swing 版的 StartPanel.EXPERT_SUMMARY 一樣。 */
     static final String EXPERT_SUMMARY = "沒有聽牌提示，紀錄只留一筆，棄牌每家只看得到最後一張，也不顯示剩幾張";
 
@@ -114,7 +116,7 @@ final class OnlinePanel implements LobbyBrowser.View {
         soloButton = Dom.button("跟電腦打", Theme.RED, () -> openSetup(true));
         createButton = Dom.button("開房間", Theme.RED, () -> openSetup(false));
         setupConfirm = Dom.button(" ", Theme.RED, this::confirmSetup);
-        joinButton = Dom.button("加入房間", Theme.RED, () -> actions.join(name(), code()));
+        joinButton = Dom.button("加入房間", Theme.RED, this::joinByCode);
         listJoinButton = Dom.button("加入", Theme.RED, this::joinSelected);
         resumeButton = Dom.button("接回牌局", Theme.BUTTON, () -> actions.resume(profile));
         cancelButton = Dom.button("取消連線", Theme.PANEL_LIGHT, actions::cancel);
@@ -134,8 +136,10 @@ final class OnlinePanel implements LobbyBrowser.View {
             box.addEventListener("change", event -> syncButtons());
         }
         codeField.addEventListener("keydown", event -> {
-            if ("Enter".equals(((KeyboardEvent) event).getKey()) && !joinButton.isDisabled()) {
-                joinButton.click();
+            KeyboardEvent key = (KeyboardEvent) event;
+            if ("Enter".equals(key.getKey()) && !Browser.isComposing(key)) {
+                key.preventDefault();
+                joinByCode();
             }
         });
         roomNameField.addEventListener("input", event -> {
@@ -262,9 +266,9 @@ final class OnlinePanel implements LobbyBrowser.View {
         }
     }
 
-    /** 按了跟電腦打或開房間，先跳出設定，選好再送出。 */
+    /** 按了跟電腦打或開房間，先檢查名字，再跳出設定，選好再送出。 */
     private void openSetup(boolean solo) {
-        if (busy || !nameValid() || setupDialog != null) {
+        if (busy || setupDialog != null || !nameAccepted()) {
             return;
         }
         setupSolo = solo;
@@ -295,9 +299,20 @@ final class OnlinePanel implements LobbyBrowser.View {
         }
     }
 
-    /** 跟電腦打的房間一定是私人的，不然打完回到房間時別人會從大廳加進來。 */
+    /**
+     * 跟電腦打的房間一定是私人的，不然打完回到房間時別人會從大廳加進來。
+     * 按鈕一直可以按，房間名稱有不雅字眼或底台太大，按下去才跳出提醒。
+     */
     private void confirmSetup() {
-        if (setupDialog == null || busy || !nameValid() || !stakesValid()) {
+        if (setupDialog == null || busy || !nameAccepted()) {
+            return;
+        }
+        if (!setupSolo && BadWords.contains(roomNameField.getValue())) {
+            Dialog.message(BadWords.ROOM_NAME_REJECTED, () -> roomNameField.focus());
+            return;
+        }
+        if (!stakesValid()) {
+            Dialog.message(STAKES_TOO_HIGH, () -> chipBox.focus());
             return;
         }
         boolean solo = setupSolo;
@@ -517,32 +532,56 @@ final class OnlinePanel implements LobbyBrowser.View {
     }
 
     private void joinSelected() {
-        if (selectedCode == null || busy) {
+        if (busy) {
             return;
         }
-        if (!nameValid()) {
-            status.setInnerText("先輸入名字再加入。");
-            nameField.focus();
+        if (selectedCode == null) {
+            Dialog.message("請先在列表選一間房間。");
             return;
         }
-        actions.join(name(), selectedCode);
+        if (nameAccepted()) {
+            actions.join(name(), selectedCode);
+        }
     }
 
-    private void syncButtons() {
-        boolean ready = !busy && nameValid();
-        if (ready) {
-            // 收掉「先輸入名字」的提示
-            status.setInnerText(" ");
+    private void joinByCode() {
+        if (busy || !nameAccepted()) {
+            return;
         }
-        // 服務器也會檢查，這裡先擋，不用連上去才知道
+        if (code().length() != ROOM_CODE_LENGTH) {
+            Dialog.message("請輸入六碼房號。", () -> codeField.focus());
+            return;
+        }
+        actions.join(name(), code());
+    }
+
+    /**
+     * 名字沒填、太長或有不雅字眼，就跳出提醒，按了確定把游標放回名字欄，回傳 false。
+     * 開桌與加入的按鈕不因為名字變灰，按下去才用這個檢查。
+     */
+    private boolean nameAccepted() {
+        String name = name();
+        String problem = name.isEmpty() ? "請先輸入名字。"
+                : !nameValid() ? "名字最多 " + MAX_NAME_LENGTH + " 字。"
+                : BadWords.contains(name) ? BadWords.NAME_REJECTED : null;
+        if (problem == null) {
+            return true;
+        }
+        Dialog.message(problem, () -> nameField.focus());
+        return false;
+    }
+
+    /** 只有正在連線時按鈕不能按；名字、房號與底台按下去才檢查，底台太大先在設定視窗裡寫出來。 */
+    private void syncButtons() {
+        // 服務器也會檢查，這裡先寫出來，不用連上去才知道
         boolean stakesValid = stakesValid();
-        stakesHint.setInnerText(stakesValid ? " " : "底和每台不能大於籌碼本金。");
+        stakesHint.setInnerText(stakesValid ? " " : STAKES_TOO_HIGH);
         Dom.visible(stakesHint, !stakesValid);
-        soloButton.setDisabled(!ready);
-        createButton.setDisabled(!ready);
-        setupConfirm.setDisabled(!ready || !stakesValid);
-        joinButton.setDisabled(!ready || code().length() != ROOM_CODE_LENGTH);
-        listJoinButton.setDisabled(!ready || selectedCode == null);
+        soloButton.setDisabled(busy);
+        createButton.setDisabled(busy);
+        setupConfirm.setDisabled(busy);
+        joinButton.setDisabled(busy);
+        listJoinButton.setDisabled(busy);
         resumeButton.setDisabled(busy);
         Dom.visible(resumeButton, profile.canResume());
         Dom.visible(cancelButton, busy);

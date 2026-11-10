@@ -49,7 +49,13 @@ class Dialog {
 
     /** 只有一段文字和一顆按鈕。 */
     static void message(String text) {
+        message(text, () -> { });
+    }
+
+    /** 只有一段文字和一顆按鈕，按了確定再做 then，例如把游標放回要改的欄位。 */
+    static void message(String text, Runnable then) {
         Dialog dialog = new Dialog(true);
+        dialog.setOnClose(then);
         dialog.card.appendChild(Dom.text("p", "dialog-text", text));
         HTMLButtonElement ok = Dom.button("確定", Theme.BUTTON, dialog::finish);
         dialog.card.appendChild(ok);
