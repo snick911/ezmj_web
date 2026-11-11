@@ -50,7 +50,7 @@ final class HonorRollDialog extends Dialog implements OnlineClient.Listener {
         card.appendChild(tabRow);
         card.appendChild(body);
         card.appendChild(Dom.text("div", "muted", "胡牌數包含自摸。贏錢是結束時的籌碼減去本金。每個類別只列數值大於 0 的成績，"
-                + "數值相同時先達成的排前面。中途離開、斷線由電腦接手過的座位與電腦都不列入。"));
+                + "數值相同時先達成的排前面。中途離開、斷線由電腦接手過的座位、中途補位的與電腦都不列入。"));
         close = Dom.button("關閉", Theme.BUTTON, this::close);
         card.appendChild(close);
         select(shown);

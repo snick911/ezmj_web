@@ -39,22 +39,28 @@ final class Messages {
         return object("type", "hello", "protocol", PROTOCOL, "token", token);
     }
 
-    /** expert 是專家模式，ezmjService 0.7.0 起才認得，更舊的服務器不理這個欄位。 */
-    static Map<String, Object> createRoom(RoomSettings settings, boolean expert) {
+    /**
+     * expert 是專家模式，ezmjService 0.7.0 起才認得；substitute 是隨時補位，0.10.0 起才認得。
+     * 更舊的服務器不理這些欄位。
+     */
+    static Map<String, Object> createRoom(RoomSettings settings, boolean expert, boolean substitute) {
         List<String> levels = new ArrayList<>();
         settings.botLevels().forEach(level -> levels.add(level.name()));
         return object("type", "createRoom", "chips", settings.chips(), "basePay", settings.basePay(),
                 "taiPay", settings.taiPay(), "botLevels", levels, "waitSeconds", settings.waitSeconds(),
                 "speed", settings.speed().name(), "name", settings.name(), "private", settings.privateRoom(),
-                "expert", expert);
+                "expert", expert, "substitute", substitute);
     }
 
-    /** 網頁會照專家模式藏資訊，所以告訴服務器可以讓我們加入專家模式的房間。 */
-    private static final List<String> SUPPORTS = List.of("expert");
+    /**
+     * 網頁會照專家模式藏資訊，所以告訴服務器可以讓我們加入專家模式的房間；
+     * 也看得懂補位的訊息，所以可以中途加入隨時補位的牌局，大廳也要列出那些牌局。
+     */
+    private static final List<String> SUPPORTS = List.of("expert", "substitute");
 
-    /** 不用登入。 */
+    /** 不用登入。說會補位，列表才有可以補位的牌局；舊服務器不理 supports。 */
     static Map<String, Object> listRooms() {
-        return object("type", "listRooms");
+        return object("type", "listRooms", "supports", List.of("substitute"));
     }
 
     /** 連線牌局的榮譽榜，不用登入。 */

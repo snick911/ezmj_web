@@ -894,6 +894,12 @@ final class TableCanvas {
         addSeatBanner(seat, text, 58 * unit(), CLAIM_BANNER_MS);
     }
 
+    /** 不是牌局事件的大字，例如有人補位上場。畫面座位，0 是自己。 */
+    void showSeatBanner(int seat, String text) {
+        addSeatBanner(seat, text);
+        repaint();
+    }
+
     private void addSeatBanner(int seat, String text, double size, int durationMs) {
         Point at = toTable(seat, 0, halfDepth(seat) * .62);
         banners.add(new Banner(text, null, at.x(), at.y(), size, Theme.GOLD, Style.PLAIN, Browser.now(), durationMs));

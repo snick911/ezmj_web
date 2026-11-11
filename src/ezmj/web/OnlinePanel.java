@@ -2,7 +2,7 @@ package ezmj.web;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 import org.teavm.jso.dom.events.KeyboardEvent;
 import org.teavm.jso.dom.html.HTMLButtonElement;
@@ -32,9 +32,13 @@ final class OnlinePanel implements LobbyBrowser.View {
     private static final int[] BASE_OPTIONS = {50, 100, 300, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000};
     private static final int[] TAI_OPTIONS = {10, 20, 50, 100, 200, 5_000, 10_000, 50_000, 100_000, 200_000, 500_000,
             1_000_000};
-    private static final String[] COLUMNS = {"房間名稱", "房主", "人數", "籌碼／底／台", "等待秒數"};
-    /** 每一欄另外加的樣式，很窄的手機放不下時藏掉等待秒數。 */
-    private static final String[] COLUMN_CLASSES = {"name", "host", "", "", "wait"};
+    private static final String[] COLUMNS = {"房間名稱", "房主", "人數", "籌碼／底／台", "等待秒數", "隨時補位", "專家"};
+    /** 每一欄另外加的樣式，很窄的手機放不下時藏掉等待秒數。最後兩欄有開就打勾，置中。 */
+    private static final String[] COLUMN_CLASSES = {"name", "host", "", "", "wait", "check", "check"};
+    private static final String CHECK = "✓";
+    /** 加入牌局中的房間之前先說清楚：要等一下才上場，也不列入榮譽榜。 */
+    static final String SUBSTITUTE_CONFIRM = "這間正在打牌。加入會替換一家電腦，等它打完這一手就換你上場；"
+            + "這一局先結束的話，下一局開始時上場。\n\n中途加入的不列入榮譽榜。要加入嗎？";
     private static final String LOADING = "正在讀取房間列表，服務器閒置後第一次可能要等一分鐘…";
     private static final String STAKES_TOO_HIGH = "底和每台不能大於籌碼本金。";
     /**
@@ -45,8 +49,8 @@ final class OnlinePanel implements LobbyBrowser.View {
 
     /** 按鈕送出的要求。name 檢查過了。 */
     interface Actions {
-        /** expert 是專家模式，房間裡每個人都照這個打。 */
-        void create(String name, RoomSettings settings, boolean expert);
+        /** expert 是專家模式，房間裡每個人都照這個打；substitute 是隨時補位，牌局中別人可以加入替換電腦。 */
+        void create(String name, RoomSettings settings, boolean expert, boolean substitute);
 
         void playBots(String name, RoomSettings settings, boolean expert);
 
@@ -71,6 +75,7 @@ final class OnlinePanel implements LobbyBrowser.View {
     private final HTMLInputElement roomNameField = input(RoomSettings.MAX_NAME_LENGTH);
     private final HTMLInputElement privateBox = checkbox();
     private final HTMLInputElement expertBox = checkbox();
+    private final HTMLInputElement substituteBox = checkbox();
     private final HTMLSelectElement chipBox = numberSelect(CHIP_OPTIONS, 20_000);
     private final HTMLSelectElement baseBox = numberSelect(BASE_OPTIONS, 100);
     private final HTMLSelectElement taiBox = numberSelect(TAI_OPTIONS, 20);
@@ -99,6 +104,7 @@ final class OnlinePanel implements LobbyBrowser.View {
     private final HTMLElement setupForm = Dom.el("div", "setup-form");
     private HTMLElement roomNameRow;
     private HTMLElement privateRow;
+    private HTMLElement substituteRow;
     private final HTMLButtonElement setupConfirm;
     /** 跳出來的設定視窗，沒有開著就是 null。 */
     private Dialog setupDialog;
@@ -109,8 +115,8 @@ final class OnlinePanel implements LobbyBrowser.View {
     /** 和 rooms 同樣的順序。 */
     private final List<HTMLElement> roomRows = new ArrayList<>();
     private String selectedCode;
-    /** 列表上專家模式的房號，名稱旁邊標「專家」。 */
-    private Set<String> expertCodes = Set.of();
+    /** 列表上每間房間的專家模式、隨時補位與牌局中，鍵是房號。 */
+    private Map<String, LobbyBrowser.RoomFlags> roomFlags = Map.of();
     private WebProfile profile = new WebProfile("", null, null, false);
     private boolean busy;
 
@@ -229,6 +235,15 @@ final class OnlinePanel implements LobbyBrowser.View {
         roomNameRow.setAttribute("title", "最多 " + RoomSettings.MAX_NAME_LENGTH + " 字，空白就用預設的名稱");
         privateRow = addRow(setupForm, "私人房間", privateBox);
         privateRow.setAttribute("title", "不列在大廳，只能用房號加入");
+        // 和專家模式一樣只寫「開啟」，怎麼補位、榮譽榜怎麼算寫在說明
+        substituteRow = Dom.el("label", "form-row expert-row");
+        substituteRow.setAttribute("title", "開打之後，電腦在打的座位別人也能中途加入替換，中途加入的不列入榮譽榜。詳見「說明」");
+        substituteRow.appendChild(Dom.text("span", "", "隨時補位"));
+        HTMLElement substituteChoice = Dom.el("span", "expert-choice");
+        substituteChoice.appendChild(substituteBox);
+        substituteChoice.appendChild(Dom.text("span", "", "開啟"));
+        substituteRow.appendChild(substituteChoice);
+        setupForm.appendChild(substituteRow);
         addRow(setupForm, "籌碼本金", chipBox);
         addRow(setupForm, "底", baseBox);
         addRow(setupForm, "每台", taiBox);
@@ -286,6 +301,7 @@ final class OnlinePanel implements LobbyBrowser.View {
         setupSolo = solo;
         Dom.visible(roomNameRow, !solo);
         Dom.visible(privateRow, !solo);
+        Dom.visible(substituteRow, !solo);
         setupConfirm.setInnerText(solo ? "開始牌局" : "開房間");
         Dialog dialog = new Dialog(true);
         dialog.card.setClassName("card setup-card");
@@ -339,7 +355,7 @@ final class OnlinePanel implements LobbyBrowser.View {
         if (solo) {
             actions.playBots(name(), chosen, expertBox.isChecked());
         } else {
-            actions.create(name(), chosen, expertBox.isChecked());
+            actions.create(name(), chosen, expertBox.isChecked(), substituteBox.isChecked());
         }
     }
 
@@ -472,9 +488,27 @@ final class OnlinePanel implements LobbyBrowser.View {
             }
             renderRooms();
         }
-        listStatus.setInnerText(list.isEmpty() ? "目前沒有等人的公開房間，可以自己開一間。"
-                : list.size() + " 間等人中，選一間按「加入」或連點兩下。");
+        updateListStatus();
         syncButtons();
+    }
+
+    /** 等人的與可以補位的分開算。牌局中的要等 showRoomFlags 才知道，所以兩邊都會呼叫。 */
+    private void updateListStatus() {
+        if (rooms.isEmpty()) {
+            listStatus.setInnerText("目前沒有等人的公開房間，可以自己開一間。");
+            return;
+        }
+        long playing = rooms.stream().filter(room -> flags(room.code()).playing()).count();
+        long waiting = rooms.size() - playing;
+        String counts = playing == 0 ? waiting + " 間等人中"
+                : waiting == 0 ? playing + " 間牌局可以補位"
+                : waiting + " 間等人中、" + playing + " 間牌局可以補位";
+        listStatus.setInnerText(counts + "，選一間按「加入」或連點兩下。");
+    }
+
+    private LobbyBrowser.RoomFlags flags(String code) {
+        LobbyBrowser.RoomFlags flags = roomFlags.get(code);
+        return flags != null ? flags : new LobbyBrowser.RoomFlags(false, false, false);
     }
 
     @Override
@@ -486,10 +520,11 @@ final class OnlinePanel implements LobbyBrowser.View {
 
     /** 和上次一樣就不重畫，理由同 showRooms。 */
     @Override
-    public void showExpertRooms(Set<String> codes) {
-        if (!codes.equals(expertCodes)) {
-            expertCodes = codes;
+    public void showRoomFlags(Map<String, LobbyBrowser.RoomFlags> flags) {
+        if (!flags.equals(roomFlags)) {
+            roomFlags = flags;
             renderRooms();
+            updateListStatus();
         }
     }
 
@@ -503,23 +538,31 @@ final class OnlinePanel implements LobbyBrowser.View {
         }
     }
 
-    /** 房間名稱與房主的名字來自網路，GridTable 一律用 innerText。滑鼠停著看得到完整的名稱與電腦速度。 */
+    /**
+     * 房間名稱與房主的名字來自網路，GridTable 一律用 innerText。滑鼠停著看得到完整的名稱與電腦速度。
+     * 隨時補位與專家模式各一欄，有開就打勾；牌局中、可以補位的房間在名稱後面標「牌局中」。
+     */
     private void renderRooms() {
         GridTable table = new GridTable(2);
-        markColumns(table.header(COLUMNS));
+        HTMLElement[] headers = table.header(COLUMNS);
+        markColumns(headers);
+        headers[5].setAttribute("title", "開打之後，電腦在打的座位也能中途加入替換");
+        headers[6].setAttribute("title", "專家模式");
         roomRows.clear();
         for (RoomListing room : rooms) {
             RoomSettings settings = room.settings();
+            LobbyBrowser.RoomFlags flags = flags(room.code());
             HTMLElement[] cells = table.row(false, room.name(), room.host(), room.humans() + "/" + SEATS,
-                    settings.chips() + "/" + settings.basePay() + "/" + settings.taiPay(), settings.waitSeconds() + " 秒");
+                    settings.chips() + "/" + settings.basePay() + "/" + settings.taiPay(), settings.waitSeconds() + " 秒",
+                    flags.substitute() ? CHECK : "", flags.expert() ? CHECK : "");
             markColumns(cells);
-            boolean expert = expertCodes.contains(room.code());
-            if (expert) {
-                cells[0].appendChild(Dom.text("span", "expert-badge", "專家"));
+            if (flags.playing()) {
+                cells[0].appendChild(Dom.text("span", "playing-badge", "牌局中"));
             }
             HTMLElement row = (HTMLElement) cells[0].getParentNode();
             row.setAttribute("title", room.name() + "　房主 " + room.host() + "　電腦速度" + settings.speed().label()
-                    + (expert ? "　專家模式" : ""));
+                    + (flags.substitute() ? "　隨時補位" : "") + (flags.expert() ? "　專家模式" : "")
+                    + (flags.playing() ? "　牌局中，加入就替換一家電腦" : ""));
             row.addEventListener("click", event -> select(room.code()));
             row.addEventListener("dblclick", event -> {
                 select(room.code());
@@ -557,8 +600,18 @@ final class OnlinePanel implements LobbyBrowser.View {
             Dialog.message("請先在列表選一間房間。");
             return;
         }
-        if (nameAccepted()) {
-            actions.join(name(), selectedCode);
+        if (!nameAccepted()) {
+            return;
+        }
+        String code = selectedCode;
+        if (flags(code).playing()) {
+            Dialog.confirm(SUBSTITUTE_CONFIRM, () -> {
+                if (!busy) {
+                    actions.join(name(), code);
+                }
+            });
+        } else {
+            actions.join(name(), code);
         }
     }
 

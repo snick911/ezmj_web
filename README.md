@@ -51,7 +51,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 
 ## 測試
 
-`test/ezmj/web/AllTests.java` 不依賴框架，直接執行 `main`，只測不碰瀏覽器的部分：訊息格式、協定版本、樂譜、骰子的點數、PDF 的結構、金額的千分位與榮譽榜的解析。
+`test/ezmj/web/AllTests.java` 不依賴框架，直接執行 `main`，只測不碰瀏覽器的部分：訊息格式、協定版本、樂譜、骰子的點數、PDF 的結構、金額的千分位、榮譽榜的解析、大廳列表的設定與補位的公告文字。
 
 畫面與連線要在瀏覽器裡實際打。`tools/autoplay.js` 只操作畫面上的按鈕與牌，和真人一樣，會打完一整場並把結果留在 `window.__auto`：
 
@@ -113,8 +113,12 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
   - 服務器在專家模式的房間不給 `readyDiscards`、不接受 `listen`；網頁照樣處理 `canListen`，聽牌中只寫「【聽牌中】」；紀錄只留最新一則，展開的箭頭藏起來；牌河每家只畫最後一張，放在第一格，被吃碰槓胡走就不畫；中央不寫剩幾張。
   - 牌河要知道最後一張有沒有被拿走：`TableCanvas.noteEvent` 在每次打牌時記下張數，有沒有動畫都會收到，之後張數變了就不畫。重連或接回時還沒記到，各家打出下一張才看得到。
   - 藏資訊是客戶端做的，所以 `joinRoom` 一律帶 `supports: ["expert"]`，沒帶的客戶端（現在的 Swing 版）服務器不讓它加入專家模式的房間。
-  - `RoomInfo`、`RoomListing` 是 `ezmj` 的，還沒有這個欄位，所以 `OnlineController.roomExpert` 與 `LobbyBrowser.expertCodes` 直接看訊息。大廳列表在房間名稱後面、房間畫面在名稱旁邊標「專家」。
+  - `RoomInfo`、`RoomListing` 是 `ezmj` 的，還沒有這個欄位，所以 `OnlineController.roomExpert` 與 `LobbyBrowser.roomFlags` 直接看訊息。大廳列表的「專家」欄打勾、房間畫面在名稱旁邊標「專家」。
   - 舊服務器（0.6.0 和更早）不認得，`options` 裡沒有 `expert`：這時只有自己開的一人房間照自己勾的打，存在 `WebProfile` 的 `ezmj.expert`，接回牌局時也看它。
+- **隨時補位**：開房間的設定才有（跟電腦打是私人的一人房間，沒有人會來補）。是房間設定，要 `ezmjService` 0.10.0：`createRoom` 帶 `substitute`，流程見服務器 README 的「隨時補位」。
+  - `joinRoom` 與 `listRooms` 都帶 `supports` 的 `"substitute"`，服務器才讓我們中途加入、列表才有牌局中的房間。`RoomListing` 沒有 `playing` 與 `options.substitute`，`LobbyBrowser.roomFlags` 和專家模式一起直接看訊息，大廳列表的「隨時補位」欄打勾、牌局中的在名稱後面標「牌局中」。從列表加入牌局中的房間先用 `Dialog.confirm` 問一次（`OnlinePanel.SUBSTITUTE_CONFIRM`）。
+  - 收到 `substituteWaiting` 就用可以取消的等待畫面蓋著（`Host.showSubstituteWaiting`），這時還沒有 `room`。取消就關掉連線，服務器發現斷線就讓出座位，所以中途斷線接回來時 token 已經失效，`loginRejected` 說座位讓出來了。之後的 `room` 不管是牌局中（上場）還是 `lobby`（整場先打完）都收掉等待的畫面。
+  - 收到 `substituted` 就在牌桌上方跳公告（`TablePanel.announce`，DOM，在聊天泡泡那一層，點擊穿過去），那一家旁邊跳「補位」（`TableCanvas.showSeatBanner`），紀錄與聊天區（`appendSystemLine`）各留一行。文字在 `Substitution`，不碰瀏覽器，`AllTests` 直接測。上場的人之後就是一般的玩家，`soloTable` 這類看真人數的判斷照 `room` 跟著變。
 - **連莊**：計分表莊家的圓圈「莊」右邊寫紅色粗體的連莊次數，滑鼠停著寫「莊家，連N拉N」；中央方框在「剩餘 N 張」下面用紅色粗體寫「連N拉N」，三行一起往上挪，手機橫向的方框小，排得比較緊。Swing 版單機在擲骰子前演 1.5 秒的「連莊」大字，網頁的牌局都在服務器上，`dealMs` 只有 3 秒，和 Swing 版連線一樣先不演。
 
 ## 資安

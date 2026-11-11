@@ -1,9 +1,8 @@
 package ezmj.web;
 
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import ezmj.online.OnlineClient;
 import ezmj.online.RoomListing;
@@ -27,8 +26,15 @@ final class LobbyBrowser implements OnlineClient.Listener {
         /** 服務器上連著的人數與牌局進行中的房間數。舊服務器沒有送、或拿不到列表時是 -1。 */
         void showActivity(int online, int playingRooms);
 
-        /** 列表上專家模式的房號，在 showRooms 之後才知道。舊服務器沒有這個設定，就是空的。 */
-        void showExpertRooms(Set<String> codes);
+        /** 列表上每間房間 RoomListing 沒有的設定，鍵是房號，在 showRooms 之後才知道。舊服務器沒有這些設定，就是空的。 */
+        void showRoomFlags(Map<String, RoomFlags> flags);
+    }
+
+    /**
+     * RoomListing 是 ezmj 的，還沒有這些欄位，所以直接看訊息。expert 是專家模式，substitute 是隨時補位，
+     * playing 是牌局中、可以補位（ezmjService 0.10.0 起，listRooms 說會補位才列出）。
+     */
+    record RoomFlags(boolean expert, boolean substitute, boolean playing) {
     }
 
     private final String url;
@@ -69,7 +75,7 @@ final class LobbyBrowser implements OnlineClient.Listener {
         if (client == null) {
             client = new WebClient(url, this);
             client.onRoomsMessage(message -> {
-                view.showExpertRooms(expertCodes(message));
+                view.showRoomFlags(roomFlags(message));
                 view.showActivity(count(message, "online"), count(message, "playingRooms"));
             });
             client.browse();
@@ -78,23 +84,24 @@ final class LobbyBrowser implements OnlineClient.Listener {
         }
     }
 
-    /** RoomListing 是 ezmj 的，還沒有專家模式，所以直接看每間的 options.expert。 */
-    static Set<String> expertCodes(Map<String, Object> message) {
-        Set<String> codes = new HashSet<>();
+    /** 每間的 options.expert、options.substitute 與 playing。舊服務器沒有的欄位當作 false。 */
+    static Map<String, RoomFlags> roomFlags(Map<String, Object> message) {
+        Map<String, RoomFlags> flags = new HashMap<>();
         Object rooms = message.get("rooms");
         if (!(rooms instanceof List)) {
-            return codes;
+            return flags;
         }
         for (Object room : (List<?>) rooms) {
             if (!(room instanceof Map)) {
                 continue;
             }
-            Object options = ((Map<?, ?>) room).get("options");
-            if (options instanceof Map && Boolean.TRUE.equals(((Map<?, ?>) options).get("expert"))) {
-                codes.add(String.valueOf(((Map<?, ?>) room).get("code")));
-            }
+            Map<?, ?> entry = (Map<?, ?>) room;
+            Object options = entry.get("options");
+            Map<?, ?> settings = options instanceof Map ? (Map<?, ?>) options : Map.of();
+            flags.put(String.valueOf(entry.get("code")), new RoomFlags(Boolean.TRUE.equals(settings.get("expert")),
+                    Boolean.TRUE.equals(settings.get("substitute")), Boolean.TRUE.equals(entry.get("playing"))));
         }
-        return codes;
+        return flags;
     }
 
     /** 舊服務器沒有這個欄位，就是 -1。 */

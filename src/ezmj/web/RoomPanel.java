@@ -16,6 +16,7 @@ final class RoomPanel {
     private final HTMLElement title = Dom.text("h1", "title", " ");
     private final HTMLElement privateBadge = Dom.text("span", "private-badge", "私人");
     private final HTMLElement expertBadge = Dom.text("span", "expert-badge", "專家模式");
+    private final HTMLElement substituteBadge = Dom.text("span", "expert-badge", "隨時補位");
     private final HTMLElement codeLine = Dom.text("div", "code-line", " ");
     private final HTMLElement listedLine = Dom.text("div", "muted", " ");
     private final HTMLElement settingsLine = Dom.text("div", "muted", " ");
@@ -33,6 +34,8 @@ final class RoomPanel {
         // 有哪些不一樣只寫在說明，畫面上只留標籤，和 Swing 版一樣
         expertBadge.setAttribute("title", "專家模式，每次最多等 " + OnlinePanel.EXPERT_MAX_WAIT_SECONDS + " 秒。有哪些不一樣見「說明」");
         name.appendChild(expertBadge);
+        substituteBadge.setAttribute("title", "開打之後，電腦在打的座位別人也能中途加入替換，中途加入的不列入榮譽榜。詳見「說明」");
+        name.appendChild(substituteBadge);
         heading.appendChild(name);
         heading.appendChild(Dom.button("複製房號", Theme.BUTTON, () -> Browser.copy(code)));
         card.appendChild(heading);
@@ -53,10 +56,11 @@ final class RoomPanel {
         return root;
     }
 
-    /** expert 是房間設定的專家模式，RoomInfo 是 ezmj 的，還沒有這個欄位。 */
-    void setRoom(RoomInfo room, boolean expert) {
+    /** expert 是房間設定的專家模式，substitute 是隨時補位，RoomInfo 是 ezmj 的，還沒有這些欄位。 */
+    void setRoom(RoomInfo room, boolean expert, boolean substitute) {
         code = room.code();
         Dom.visible(expertBadge, expert);
+        Dom.visible(substituteBadge, substitute);
         RoomSettings settings = room.settings();
         // 舊服務器沒有房間名稱，就和以前一樣用房號當標題
         String name = settings.name();
@@ -83,7 +87,7 @@ final class RoomPanel {
 
         startButton.setDisabled(!room.isHost());
         startButton.setInnerText(room.isHost() ? "開始牌局" : "等房主開局");
-        notice.setInnerText(room.isHost() ? "不到四人時由電腦補滿。" : " ");
+        notice.setInnerText(room.isHost() ? (substitute ? "不到四人時由電腦補滿，開打後別人還能加入替換電腦。" : "不到四人時由電腦補滿。") : " ");
     }
 
     private static void addSeat(GridTable table, RoomInfo room, int seat) {

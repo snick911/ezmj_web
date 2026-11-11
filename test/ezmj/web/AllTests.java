@@ -33,6 +33,8 @@ public final class AllTests {
         messagesMatchServerReadme();
         honorRollFollowsServerOrder();
         createRoomCarriesEveryOption();
+        lobbyReadsRoomFlags();
+        substitutionTextNamesTheComputer();
         everyVoiceHasTheSameLength();
         voiceTextUsesTableNames();
         diceMatchSwingClient();
@@ -60,7 +62,8 @@ public final class AllTests {
         Tile tile = Tile.of(Suit.DRAGON, 1);
         same(Json.write(Messages.helloName("小明")), "{\"type\":\"hello\",\"protocol\":1,\"name\":\"小明\"}");
         same(Json.write(Messages.helloToken("t")), "{\"type\":\"hello\",\"protocol\":1,\"token\":\"t\"}");
-        same(Json.write(Messages.joinRoom("K7M2QX")), "{\"type\":\"joinRoom\",\"code\":\"K7M2QX\",\"supports\":[\"expert\"]}");
+        same(Json.write(Messages.joinRoom("K7M2QX")),
+                "{\"type\":\"joinRoom\",\"code\":\"K7M2QX\",\"supports\":[\"expert\",\"substitute\"]}");
         same(Json.write(Messages.discard(3, tile)), "{\"type\":\"discard\",\"waitId\":3,\"tile\":\"5z\"}");
         same(Json.write(Messages.declareListen(7)), "{\"type\":\"declareListen\",\"listenId\":7}");
         same(Json.write(Messages.listen(3, tile)), "{\"type\":\"listen\",\"waitId\":3,\"tile\":\"5z\"}");
@@ -73,7 +76,7 @@ public final class AllTests {
         same(Json.write(Messages.start()), "{\"type\":\"start\"}");
         same(Json.write(Messages.leave()), "{\"type\":\"leave\"}");
         same(Json.write(Messages.ping()), "{\"type\":\"ping\"}");
-        same(Json.write(Messages.listRooms()), "{\"type\":\"listRooms\"}");
+        same(Json.write(Messages.listRooms()), "{\"type\":\"listRooms\",\"supports\":[\"substitute\"]}");
         same(Json.write(Messages.honorRoll()), "{\"type\":\"honorRoll\"}");
     }
 
@@ -102,10 +105,12 @@ public final class AllTests {
     private static void createRoomCarriesEveryOption() {
         RoomSettings settings = new RoomSettings(20000, 100, 20,
                 List.of(BotLevel.BEGINNER, BotLevel.NORMAL, BotLevel.PRO), 30, GameSpeed.FAST, "週末牌搭子", true);
-        Map<String, Object> message = Messages.createRoom(settings, true);
+        Map<String, Object> message = Messages.createRoom(settings, true, true);
         same(String.valueOf(message.get("type")), "createRoom");
         same(String.valueOf(message.get("expert")), "true");
-        same(String.valueOf(Messages.createRoom(settings, false).get("expert")), "false");
+        same(String.valueOf(message.get("substitute")), "true");
+        same(String.valueOf(Messages.createRoom(settings, false, false).get("expert")), "false");
+        same(String.valueOf(Messages.createRoom(settings, false, false).get("substitute")), "false");
         same(Json.write(message.get("botLevels")), "[\"BEGINNER\",\"NORMAL\",\"PRO\"]");
         same(String.valueOf(message.get("chips")), "20000");
         same(String.valueOf(message.get("basePay")), "100");
@@ -114,6 +119,47 @@ public final class AllTests {
         same(String.valueOf(message.get("speed")), "FAST");
         same(String.valueOf(message.get("name")), "週末牌搭子");
         same(String.valueOf(message.get("private")), "true");
+    }
+
+    /** 大廳的「隨時補位」「專家」兩欄與「牌局中」照服務器 README 的 rooms；舊服務器沒有的欄位當作沒開。 */
+    @SuppressWarnings("unchecked")
+    private static void lobbyReadsRoomFlags() {
+        Map<String, Object> message = (Map<String, Object>) Json.parse("{\"type\":\"rooms\",\"rooms\":["
+                + "{\"code\":\"AAAAAA\",\"name\":\"a\",\"host\":\"小明\",\"humans\":1,\"playing\":false,\"openSeats\":3,"
+                + "\"options\":{\"expert\":true,\"substitute\":false}},"
+                + "{\"code\":\"BBBBBB\",\"name\":\"b\",\"host\":\"小花\",\"humans\":2,\"playing\":true,\"openSeats\":1,"
+                + "\"options\":{\"expert\":false,\"substitute\":true}},"
+                + "{\"code\":\"CCCCCC\",\"name\":\"c\",\"host\":\"小美\",\"humans\":1,\"options\":{}}]}");
+        Map<String, LobbyBrowser.RoomFlags> flags = LobbyBrowser.roomFlags(message);
+        check(flags.get("AAAAAA").equals(new LobbyBrowser.RoomFlags(true, false, false)), "專家模式、等人中");
+        check(flags.get("BBBBBB").equals(new LobbyBrowser.RoomFlags(false, true, true)), "隨時補位、牌局中");
+        check(flags.get("CCCCCC").equals(new LobbyBrowser.RoomFlags(false, false, false)), "舊服務器沒有這些欄位");
+        check(LobbyBrowser.roomFlags(Map.<String, Object>of("type", "rooms")).isEmpty(), "沒有列表");
+    }
+
+    /** 公告要照使用者要的寫法：「玩家 ○○ 替換電腦（××）加入」，離開的人留下的座位寫出是代打誰的。 */
+    @SuppressWarnings("unchecked")
+    private static void substitutionTextNamesTheComputer() {
+        Substitution bot = Substitution.substituted((Map<String, Object>) Json.parse(
+                "{\"type\":\"substituted\",\"seat\":2,\"name\":\"小明\",\"replaced\":\"阿土伯\",\"computer\":true}"));
+        check(bot.seat() == 2, "座位");
+        same(bot.announcement(false), "玩家 小明 替換電腦（阿土伯）加入");
+        same(bot.announcement(true), "你替換電腦（阿土伯）加入");
+        Substitution left = Substitution.substituted((Map<String, Object>) Json.parse(
+                "{\"type\":\"substituted\",\"seat\":1,\"name\":\"小明\",\"replaced\":\"小花\",\"computer\":false}"));
+        same(left.announcement(false), "玩家 小明 替換電腦（代打「小花」的座位）加入");
+        Substitution waiting = Substitution.waiting((Map<String, Object>) Json.parse(
+                "{\"type\":\"substituteWaiting\",\"seat\":3,\"replacing\":\"阿土伯\",\"computer\":true}"));
+        check(waiting.seat() == 3, "保留的座位");
+        check(waiting.waitingDetail().contains("等電腦（阿土伯）打完這一手"), "說明在等哪一家：" + waiting.waitingDetail());
+        check(waiting.waitingDetail().contains("不列入榮譽榜"), "說明不列入榮譽榜");
+        boolean rejected = false;
+        try {
+            Substitution.substituted(Map.<String, Object>of("type", "substituted", "seat", 9L, "name", "x", "replaced", "y"));
+        } catch (IllegalArgumentException e) {
+            rejected = true;
+        }
+        check(rejected, "座位不對的訊息看不懂，照其他看不懂的訊息略過");
     }
 
     /** 樂譜寫錯時各聲部會對不齊。 */

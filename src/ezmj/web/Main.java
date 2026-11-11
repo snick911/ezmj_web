@@ -101,9 +101,9 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
     }
 
     @Override
-    public void create(String name, RoomSettings roomSettings, boolean expert) {
+    public void create(String name, RoomSettings roomSettings, boolean expert, boolean substitute) {
         connecting("房間建立中，請耐心等待…");
-        controller.createRoom(name, roomSettings, expert);
+        controller.createRoom(name, roomSettings, expert, substitute);
     }
 
     @Override
@@ -167,6 +167,13 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
     @Override
     public void showWaiting(String text) {
         waiting.show(text, null);
+    }
+
+    /** 等補位時還能取消，取消就關掉連線，服務器會把保留的座位讓出來。 */
+    @Override
+    public void showSubstituteWaiting(String text, String detail) {
+        waiting.show(text, this::cancel);
+        waiting.setDetail(detail);
     }
 
     @Override

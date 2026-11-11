@@ -36,6 +36,9 @@ final class TablePanel {
     private static final int BUBBLE_MAX_MS = 9_000;
     /** 和 style.css 的 .chat-bubble.leaving 一樣長。 */
     private static final int BUBBLE_FADE_MS = 400;
+    /** 牌桌上的公告停多久，例如有人補位上場；淡出和 style.css 的 .table-announce.leaving 一樣長。 */
+    private static final int ANNOUNCE_MS = 8_000;
+    private static final int ANNOUNCE_FADE_MS = 600;
 
     /** 動作列上的一個按鈕。translucent 的按鈕半透明，表示可以用但不一定要按。 */
     record ActionItem(String label, String color, Runnable run, boolean translucent) {
@@ -68,6 +71,8 @@ final class TablePanel {
     /** 蓋在牌桌上的聊天泡泡，點擊會穿過去；四家各一疊，位置由牌桌算好。 */
     private final HTMLElement chatLayer = Dom.el("div", "chat-layer");
     private final HTMLElement[] chatSeats = new HTMLElement[4];
+    /** 牌桌上方的公告，同時有好幾則就往下疊，和聊天泡泡同一層，點擊會穿過去。 */
+    private final HTMLElement announceStack = Dom.el("div", "announce-stack");
     /** 在牌桌上按 Enter 跳出來的輸入框，送出或按 Esc 就收起來。 */
     private final HTMLElement quickChat = Dom.el("div", "quick-chat");
     private final HTMLInputElement quickField = (HTMLInputElement) Dom.el("input", "field quick-chat-field");
@@ -170,6 +175,9 @@ final class TablePanel {
             chatSeats[seat] = Dom.el("div", "chat-seat seat-" + seat);
             chatLayer.appendChild(chatSeats[seat]);
         }
+        announceStack.setAttribute("role", "status");
+        announceStack.setAttribute("aria-live", "polite");
+        chatLayer.appendChild(announceStack);
         quickField.setType("text");
         quickField.setMaxLength(MAX_CHAT_LENGTH * 2);
         quickField.setAttribute("autocomplete", "off");
@@ -330,6 +338,34 @@ final class TablePanel {
         if (!mine && !drawerOpen) {
             menu.setClassName("btn menu-button unread");
         }
+    }
+
+    /**
+     * 牌桌上方跳出醒目的公告，停幾秒再淡出，例如有人補位上場。名字來自網路，一律用 innerText。
+     * detail 是下面一行小字，可以是 null。
+     */
+    void announce(String title, String detail) {
+        HTMLElement box = Dom.el("div", "table-announce");
+        box.appendChild(Dom.text("div", "announce-title", title));
+        if (detail != null) {
+            box.appendChild(Dom.text("div", "announce-detail", detail));
+        }
+        announceStack.appendChild(box);
+        Browser.after(ANNOUNCE_MS, () -> {
+            box.setClassName("table-announce leaving");
+            Browser.after(ANNOUNCE_FADE_MS, () -> Dom.remove(box));
+        });
+    }
+
+    /** 聊天區裡不是誰說的話，例如有人補位上場，置中的金色字，事後還看得到。 */
+    void appendSystemLine(String text) {
+        chatList.appendChild(Dom.text("div", "chat-line system", text));
+        chatList.setScrollTop(chatList.getScrollHeight());
+    }
+
+    /** 這一家旁邊跳出大字，seat 是畫面座位。 */
+    void showSeatBanner(int seat, String text) {
+        canvas.showSeatBanner(seat, text);
     }
 
     /** 聊天送不出去的原因，例如說太快或舊服務器不能聊天。用快速輸入框的人看不到側欄，所以牌桌上也跳一下。 */
