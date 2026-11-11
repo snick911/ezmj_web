@@ -229,21 +229,18 @@ final class OnlinePanel implements LobbyBrowser.View {
         card.appendChild(row);
     }
 
-    /** 跳出來的設定。房間名稱與私人房間只有開房間才有，跟電腦打一定是私人的一人房間。 */
+    /**
+     * 跳出來的設定。房間名稱與私人房間只有開房間才有，跟電腦打一定是私人的一人房間。
+     * 房間名稱拉長到和三家電腦的等級一樣寬；三個勾選框只有框，對齊在同一條線，點標題也能勾，
+     * 怎麼補位、專家模式有哪些不一樣都寫在說明，滑鼠停著也看得到。
+     */
     private void buildSetupForm() {
         roomNameRow = addRow(setupForm, "房間名稱", roomNameField);
+        roomNameRow.setClassName("form-row wide-row");
         roomNameRow.setAttribute("title", "最多 " + RoomSettings.MAX_NAME_LENGTH + " 字，空白就用預設的名稱");
-        privateRow = addRow(setupForm, "私人房間", privateBox);
-        privateRow.setAttribute("title", "不列在大廳，只能用房號加入");
-        // 和專家模式一樣只寫「開啟」，怎麼補位、榮譽榜怎麼算寫在說明
-        substituteRow = Dom.el("label", "form-row expert-row");
-        substituteRow.setAttribute("title", "開打之後，電腦在打的座位別人也能中途加入替換，中途加入的不列入榮譽榜。詳見「說明」");
-        substituteRow.appendChild(Dom.text("span", "", "隨時補位"));
-        HTMLElement substituteChoice = Dom.el("span", "expert-choice");
-        substituteChoice.appendChild(substituteBox);
-        substituteChoice.appendChild(Dom.text("span", "", "開啟"));
-        substituteRow.appendChild(substituteChoice);
-        setupForm.appendChild(substituteRow);
+        privateRow = checkRow("私人房間", privateBox, "不列在大廳，只能用房號加入");
+        substituteRow = checkRow("隨時補位", substituteBox,
+                "開打之後，電腦在打的座位別人也能中途加入替換，中途加入的不列入榮譽榜。詳見「說明」");
         addRow(setupForm, "籌碼本金", chipBox);
         addRow(setupForm, "底", baseBox);
         addRow(setupForm, "每台", taiBox);
@@ -263,16 +260,9 @@ final class OnlinePanel implements LobbyBrowser.View {
         waitRow.appendChild(waitField);
         setupForm.appendChild(waitRow);
         addRow(setupForm, "電腦速度", speedBox);
-        // 勾選框旁邊只寫「開啟」，點字也能勾；有哪些不一樣寫在說明，和 Swing 版一樣。跟電腦打與開房間都有，開房間的話房間裡每個人都是
-        HTMLElement expertRow = Dom.el("label", "form-row expert-row");
-        expertRow.setAttribute("title", "每次最多等 " + EXPERT_MAX_WAIT_SECONDS
+        // 跟電腦打與開房間都有，開房間的話房間裡每個人都是
+        checkRow("專家模式", expertBox, "每次最多等 " + EXPERT_MAX_WAIT_SECONDS
                 + " 秒；開房間的話房間裡每個人都照專家模式打。有哪些不一樣見「說明」");
-        expertRow.appendChild(Dom.text("span", "", "專家模式"));
-        HTMLElement expertChoice = Dom.el("span", "expert-choice");
-        expertChoice.appendChild(expertBox);
-        expertChoice.appendChild(Dom.text("span", "", "開啟"));
-        expertRow.appendChild(expertChoice);
-        setupForm.appendChild(expertRow);
         expertBox.addEventListener("change", event -> syncWaitLimit());
         syncWaitLimit();
         setupForm.appendChild(stakesHint);
@@ -357,6 +347,18 @@ final class OnlinePanel implements LobbyBrowser.View {
         } else {
             actions.create(name(), chosen, expertBox.isChecked(), substituteBox.isChecked());
         }
+    }
+
+    /** 勾選框的一列：整列是 label，點標題也能勾。框放在選項欄的左邊，三個勾選框對齊。 */
+    private HTMLElement checkRow(String label, HTMLInputElement box, String title) {
+        HTMLElement row = Dom.el("label", "form-row check-row");
+        row.setAttribute("title", title);
+        row.appendChild(Dom.text("span", "", label));
+        HTMLElement choice = Dom.el("span", "check-choice");
+        choice.appendChild(box);
+        row.appendChild(choice);
+        setupForm.appendChild(row);
+        return row;
     }
 
     private static HTMLElement addRow(HTMLElement parent, String label, HTMLElement field) {
