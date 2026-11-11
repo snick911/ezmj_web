@@ -55,6 +55,21 @@ final class GameReport {
     private static final double FIRST_TABLE_TOP = 514;
     private static final double NEXT_TABLE_TOP = 174;
 
+    private static final String MEDAL_INK = "#1B1B1B";
+    private static final String GOLD_FAINT = "rgba(232,192,90,.35)";
+    /** 結果圖上成績表的左緣，右邊也留一樣寬。 */
+    private static final double SHARE_TABLE_X = 66;
+    private static final double SHARE_TABLE_TOP = 372;
+    private static final double SHARE_HEAD_H = 76;
+    private static final double SHARE_ROW_H = 172;
+    /** 自己那一列的金框比表格左右各寬這麼多。 */
+    private static final double MINE_OUTSET = 8;
+    /** 名次與玩家、胡牌、自摸、放槍、輸贏、籌碼，加起來是圖寬扣掉左右的 SHARE_TABLE_X。 */
+    private static final double[] SHARE_COLUMNS = {360, 80, 80, 80, 180, 168};
+    private static final String[] SHARE_ALIGNS = {"left", "center", "center", "center", "right", "right"};
+    /** 數字放不下時縮到這麼小，比名字縮得多，數字不能截掉。 */
+    private static final double SHARE_MIN_NUMBER = 20;
+
     private final GameView game;
     private final String roomName;
     /** 牌局結束的當地時間，例如 202611062130。 */
@@ -104,7 +119,7 @@ final class GameReport {
 
     // ---- 結果圖 ----
 
-    /** 最終排名的圖，四家各一張卡片，自己的有金框。 */
+    /** 這一場的成績表，欄位和牌局結束視窗的表格一樣。自己那一列有金色的底、粗金框與金色名字，金框比表格左右各寬 MINE_OUTSET。 */
     HTMLCanvasElement shareImage() {
         HTMLCanvasElement canvas = canvas(IMAGE_W, IMAGE_H);
         CanvasRenderingContext2D context = context(canvas);
@@ -118,7 +133,7 @@ final class GameReport {
         g.color(Theme.GOLD);
         g.roundStroke(4);
         g.drawRoundRect(28, 28, IMAGE_W - 56, IMAGE_H - 56, 40);
-        g.color("rgba(232,192,90,.35)");
+        g.color(GOLD_FAINT);
         g.roundStroke(2);
         g.drawRoundRect(42, 42, IMAGE_W - 84, IMAGE_H - 84, 30);
 
@@ -134,56 +149,79 @@ final class GameReport {
         text(context, when() + (roomName.isEmpty() ? "" : "　" + roomName), false, 28, 20, IMAGE_W - 180, middle, 304,
                 "center");
 
-        double top = 352;
-        double cardH = 196;
-        double gap = 22;
-        for (int i = 0; i < ranking.length; i++) {
-            paintRankCard(g, ranking[i], ranks[i], 90, top + i * (cardH + gap), 900, cardH);
-        }
+        paintShareTable(g, ranking, ranks);
         g.color(Theme.MUTED);
+        text(context, "胡牌次數包含自摸", false, 26, 20, IMAGE_W - 180, middle, shareRowTop(SEATS) + 44, "center");
         text(context, Browser.siteAddress(), false, 26, 18, IMAGE_W - 180, middle, IMAGE_H - 82, "center");
         return canvas;
     }
 
-    private void paintRankCard(Gfx g, Player player, int rank, double x, double y, double w, double h) {
+    /** 結果圖上第 index 列（0 是第一名）的上緣；index 是 4 時是表格的下緣。 */
+    private static double shareRowTop(int index) {
+        return SHARE_TABLE_TOP + SHARE_HEAD_H + index * SHARE_ROW_H;
+    }
+
+    private void paintShareTable(Gfx g, Player[] ranking, int[] ranks) {
+        CanvasRenderingContext2D context = g.context();
+        double width = sum(SHARE_COLUMNS);
+        g.color("rgba(0,0,0,.30)");
+        g.fillRoundRect(SHARE_TABLE_X, SHARE_TABLE_TOP, width, shareRowTop(SEATS) - SHARE_TABLE_TOP, 30);
+        String[] heads = {"名次　玩家", "胡牌", "自摸", "放槍", "輸贏", "籌碼"};
+        g.color(Theme.MUTED);
+        for (int i = 0; i < heads.length; i++) {
+            cell(context, heads[i], true, 28, 20, SHARE_TABLE_X, SHARE_COLUMNS, i, SHARE_ALIGNS[i],
+                    SHARE_TABLE_TOP + SHARE_HEAD_H / 2);
+        }
+        g.color(GOLD_FAINT);
+        g.fillRect(SHARE_TABLE_X, shareRowTop(0) - 1, width, 2);
+        for (int i = 0; i < ranking.length; i++) {
+            // 自己那一列有金框，上下就不畫分隔線
+            if (i + 1 < ranking.length && ranking[i].seat() != 0 && ranking[i + 1].seat() != 0) {
+                g.color("rgba(255,255,255,.10)");
+                g.fillRect(SHARE_TABLE_X + 20, shareRowTop(i + 1) - 1, width - 40, 2);
+            }
+            paintShareRow(g, ranking[i], ranks[i], shareRowTop(i));
+        }
+    }
+
+    private void paintShareRow(Gfx g, Player player, int rank, double top) {
         CanvasRenderingContext2D context = g.context();
         boolean mine = player.seat() == 0;
         GameRecord record = game.record(player.seat(), "");
-        g.color(mine ? "rgba(232,192,90,.16)" : "rgba(0,0,0,.30)");
-        g.fillRoundRect(x, y, w, h, 34);
+        double middle = top + SHARE_ROW_H / 2;
         if (mine) {
+            double x = SHARE_TABLE_X - MINE_OUTSET;
+            double w = sum(SHARE_COLUMNS) + MINE_OUTSET * 2;
+            g.color("rgba(232,192,90,.22)");
+            g.fillRoundRect(x, top + 6, w, SHARE_ROW_H - 12, 28);
             g.color(Theme.GOLD);
-            g.roundStroke(4);
-            g.drawRoundRect(x, y, w, h, 34);
+            g.roundStroke(5);
+            g.drawRoundRect(x, top + 6, w, SHARE_ROW_H - 12, 28);
         }
 
-        double cx = x + 92;
-        double cy = y + h / 2;
+        double cx = SHARE_TABLE_X + 12 + 36;
         g.color(MEDALS[Math.min(rank, MEDALS.length) - 1]);
-        g.fillEllipse(cx - 50, cy - 50, 100, 100);
-        g.color("#1B1B1B");
-        text(context, String.valueOf(rank), true, 56, 56, 90, cx, cy + 2, "center");
+        g.fillEllipse(cx - 36, middle - 36, 72, 72);
+        g.color(MEDAL_INK);
+        text(context, String.valueOf(rank), true, 42, 42, 64, cx, middle + 2, "center");
 
-        double nameX = x + 172;
-        double nameMax = mine ? 300 : 360;
+        double nameX = cx + 36 + 20;
+        double nameMax = SHARE_TABLE_X + SHARE_COLUMNS[0] - 12 - nameX;
+        g.color(mine ? Theme.GOLD : Theme.TEXT);
+        text(context, player.name(), true, 44, 26, nameMax, nameX, middle, "left");
+
         g.color(Theme.TEXT);
-        String name = text(context, player.name(), true, 46, 30, nameMax, nameX, y + 70, "left");
-        if (mine) {
-            double tagX = nameX + context.measureText(name).getWidth() + 14;
-            g.color(Theme.GOLD);
-            g.fillRoundRect(tagX, y + 50, 52, 40, 12);
-            g.color("#1B1B1B");
-            text(context, "你", true, 28, 28, 52, tagX + 26, y + 71, "center");
+        int[] counts = {record.wins(), record.selfDraws(), record.dealIns()};
+        for (int i = 0; i < counts.length; i++) {
+            cell(context, String.valueOf(counts[i]), mine, 44, SHARE_MIN_NUMBER, SHARE_TABLE_X, SHARE_COLUMNS, 1 + i,
+                    "center", middle);
         }
-        g.color(Theme.MUTED);
-        text(context, "胡 " + record.wins() + "　自摸 " + record.selfDraws() + "　放槍 " + record.dealIns(), false, 28, 20,
-                360, nameX, y + 140, "left");
-
-        double right = x + w - 48;
         g.color(ResultDialog.moneyColor(record.winnings()));
-        text(context, signed(record.winnings()), true, 56, 32, 300, right, y + 72, "right");
-        g.color(Theme.MUTED);
-        text(context, "籌碼 " + grouped(player.chips()), false, 28, 20, 300, right, y + 140, "right");
+        cell(context, signed(record.winnings()), true, 42, SHARE_MIN_NUMBER, SHARE_TABLE_X, SHARE_COLUMNS, 4, "right",
+                middle);
+        g.color(Theme.TEXT);
+        cell(context, grouped(player.chips()), mine, 36, SHARE_MIN_NUMBER, SHARE_TABLE_X, SHARE_COLUMNS, 5, "right",
+                middle);
     }
 
     // ---- 輸贏歷程 PDF ----
@@ -382,10 +420,16 @@ final class GameReport {
         }
     }
 
-    /** 第 column 欄的一格，左右各留 12 像素。放不下就縮小字，再放不下就截掉。 */
+    /** PDF 表格第 column 欄的一格。 */
     private static void cell(CanvasRenderingContext2D context, String value, boolean bold, double size, double[] columns,
                              int column, String align, double middle) {
-        double left = MARGIN;
+        cell(context, value, bold, size, size * .75, MARGIN, columns, column, align, middle);
+    }
+
+    /** 從 tableLeft 開始的表格第 column 欄的一格，左右各留 12 像素。放不下就縮小字，縮到 minSize 還放不下就截掉。 */
+    private static void cell(CanvasRenderingContext2D context, String value, boolean bold, double size, double minSize,
+                             double tableLeft, double[] columns, int column, String align, double middle) {
+        double left = tableLeft;
         for (int i = 0; i < column; i++) {
             left += columns[i];
         }
@@ -393,7 +437,7 @@ final class GameReport {
         double width = columns[column] - pad * 2;
         double x = align.equals("left") ? left + pad : align.equals("right") ? left + columns[column] - pad
                 : left + columns[column] / 2;
-        text(context, value, bold, size, size * .75, width, x, middle, align);
+        text(context, value, bold, size, minSize, width, x, middle, align);
     }
 
     private static double sum(double[] columns) {
