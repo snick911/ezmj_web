@@ -6,8 +6,8 @@
 <meta name="ezmj-version" content="${project.version}">
 <!-- EZMJ Web © 2026 snick911。授權是 AGPL-3.0-only，另有商業授權。 -->
 <link rel="license" href="https://www.gnu.org/licenses/agpl-3.0.html">
-<!-- token 存在瀏覽器裡，只准執行這個網站自己的程式，也只准連服務器。ws://localhost 是測試用的。 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src wss://ezmj-server.onrender.com ws://localhost:* ws://127.0.0.1:*; base-uri 'none'; form-action 'none'">
+<!-- token 存在瀏覽器裡，只准執行這個網站自己的程式，也只准連服務器與這個網站自己（下載錄好的背景音樂）。ws://localhost 是測試用的。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self' wss://ezmj-server.onrender.com ws://localhost:* ws://127.0.0.1:*; base-uri 'none'; form-action 'none'">
 <title>EZMJ 台灣十六張麻將</title>
 <link rel="icon" href="favicon.svg?v=${project.version}" type="image/svg+xml">
 <link rel="stylesheet" href="style.css?v=${project.version}">

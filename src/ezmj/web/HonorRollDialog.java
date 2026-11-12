@@ -5,6 +5,8 @@ import java.util.Map;
 
 import org.teavm.jso.dom.html.HTMLButtonElement;
 import org.teavm.jso.dom.html.HTMLElement;
+import org.teavm.jso.dom.html.HTMLOptionElement;
+import org.teavm.jso.dom.html.HTMLSelectElement;
 
 import ezmj.model.GameRecord;
 import ezmj.model.HonorRoll;
@@ -25,9 +27,14 @@ final class HonorRollDialog extends Dialog implements OnlineClient.Listener {
     private final String myName;
     private final HTMLElement body = Dom.el("div", "honor-body");
     private final HTMLButtonElement[] tabs = new HTMLButtonElement[HonorRoll.Category.values().length];
+    /** 贏錢金額照底台分榜，看那一頁時分頁下面多一個選底台的選單。 */
+    private final HTMLElement stakesRow = Dom.el("label", "honor-stakes");
+    private final HTMLSelectElement stakesBox = (HTMLSelectElement) Dom.el("select", "field");
     private final HTMLButtonElement close;
     private WebClient client;
     private Map<HonorRoll.Category, List<GameRecord>> roll;
+    private List<HonorRollMessage.StakesBoard> stakesBoards = List.of();
+    private int shownStakes = -1;
     private HonorRoll.Category shown = HonorRoll.Category.WINS;
 
     /** myName 是大廳上填的名字，榜上同名的那幾列會標出來；沒填就是空字串。 */
@@ -36,7 +43,8 @@ final class HonorRollDialog extends Dialog implements OnlineClient.Listener {
         this.myName = myName.trim();
         card.setClassName("card honor-card");
         card.appendChild(Dom.text("h2", "headline", "榮譽榜"));
-        card.appendChild(Dom.text("div", "muted", "連線牌局打到結束的真人成績，每個類別留前 " + HonorRoll.SIZE + " 名。"));
+        card.appendChild(Dom.text("div", "muted", "連線牌局打到結束的真人成績，每個類別留前 " + HonorRoll.SIZE
+                + " 名，贏錢金額每組底台各留前 " + HonorRoll.SIZE + " 名。"));
 
         HTMLElement tabRow = Dom.el("div", "honor-tabs");
         tabRow.setAttribute("role", "tablist");
@@ -48,9 +56,18 @@ final class HonorRollDialog extends Dialog implements OnlineClient.Listener {
             tabRow.appendChild(tabs[i]);
         }
         card.appendChild(tabRow);
+        stakesRow.appendChild(Dom.text("span", "", "底台"));
+        stakesRow.appendChild(stakesBox);
+        stakesBox.addEventListener("change", event -> {
+            shownStakes = Integer.parseInt(stakesBox.getValue());
+            showTable();
+        });
+        Dom.visible(stakesRow, false);
+        card.appendChild(stakesRow);
         card.appendChild(body);
         card.appendChild(Dom.text("div", "muted", "胡牌數包含自摸。贏錢是結束時的籌碼減去本金。每個類別只列數值大於 0 的成績，"
-                + "數值相同時先達成的排前面。中途離開、斷線由電腦接手過的座位、中途補位的與電腦都不列入。"));
+                + "數值相同時先達成的排前面。中途離開、斷線由電腦接手過的座位、中途補位的與電腦都不列入。"
+                + "贏錢金額照底與每台分開排名，不同底台的輸贏不放在一起比。"));
         close = Dom.button("關閉", Theme.BUTTON, this::close);
         card.appendChild(close);
         select(shown);
@@ -98,9 +115,33 @@ final class HonorRollDialog extends Dialog implements OnlineClient.Listener {
         body.appendChild(Dom.text("p", "muted honor-status", text));
     }
 
+    /** 列出有紀錄的底台，先選最近有新紀錄的那組。value 是在 stakesBoards 的位置。 */
+    private void fillStakes() {
+        Dom.clear(stakesBox);
+        for (int i = 0; i < stakesBoards.size(); i++) {
+            HTMLOptionElement option = (HTMLOptionElement) Dom.text("option", "", stakesBoards.get(i).label());
+            option.setValue(String.valueOf(i));
+            stakesBox.appendChild(option);
+        }
+        shownStakes = HonorRollMessage.latest(stakesBoards);
+        if (shownStakes >= 0) {
+            stakesBox.setValue(String.valueOf(shownStakes));
+        }
+    }
+
+    /** 贏錢金額只看選的那組底台；選單只在贏錢金額、而且有紀錄時出現。 */
+    private List<GameRecord> shownRecords() {
+        boolean byStakes = shown == HonorRoll.Category.WINNINGS;
+        Dom.visible(stakesRow, byStakes && shownStakes >= 0);
+        if (!byStakes) {
+            return roll.get(shown);
+        }
+        return shownStakes >= 0 ? stakesBoards.get(shownStakes).records() : List.of();
+    }
+
     /** 名字來自網路，GridTable 一律用 innerText。這個類別的那一欄是金色，自己的名字整列標出來。 */
     private void showTable() {
-        List<GameRecord> records = roll.get(shown);
+        List<GameRecord> records = shownRecords();
         if (records.isEmpty()) {
             showStatus("還沒有紀錄。連線牌局打到結束，成績就會記錄在這裡。");
             return;
@@ -133,6 +174,8 @@ final class HonorRollDialog extends Dialog implements OnlineClient.Listener {
         if ("honorRoll".equals(type)) {
             stopClient();
             roll = HonorRollMessage.parse(message);
+            stakesBoards = HonorRollMessage.winningsByStakes(message);
+            fillStakes();
             showTable();
         } else if ("error".equals(type)) {
             stopClient();

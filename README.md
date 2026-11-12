@@ -51,7 +51,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 
 ## 測試
 
-`test/ezmj/web/AllTests.java` 不依賴框架，直接執行 `main`，只測不碰瀏覽器的部分：訊息格式、協定版本、樂譜、骰子的點數、PDF 的結構、金額的千分位、榮譽榜的解析、大廳列表的設定與補位的公告文字。
+`test/ezmj/web/AllTests.java` 不依賴框架，直接執行 `main`，只測不碰瀏覽器的部分：訊息格式、協定版本、樂譜、曲目和 Swing 版的 `MusicTrack` 一樣、錄好的曲子有放進網站、錄好的曲子壓到多大聲、司儀的話、骰子的點數、PDF 的結構、金額的千分位、榮譽榜的解析、大廳列表的設定與補位的公告文字。
 
 畫面與連線要在瀏覽器裡實際打。`tools/autoplay.js` 只操作畫面上的按鈕與牌，和真人一樣，會打完一整場並把結果留在 `window.__auto`：
 
@@ -77,7 +77,8 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 | `HonorRollDialog`、`HonorRollMessage` | 連線牌局的榮譽榜：視窗；讀服務器的 `honorRoll` | `HelpDialog` 的榮譽榜頁，欄位一樣 |
 | `ShareDialog`、`GameReport`、`PdfWriter` | 牌局結束後的結果圖與輸贏歷程 PDF | 網頁版才有 |
 | `WaitingOverlay` | 等服務器回應時蓋住畫面的提示 | 網頁版才有 |
-| `SoundEffects`、`BackgroundMusic`、`MusicScores`、`VoiceLines` | 音效、音樂、語音 | 同名 |
+| `SoundEffects`、`BackgroundMusic`、`MusicScores`、`VoiceLines` | 音效、音樂、語音與司儀 | 同名，錄好的曲子是 `RecordedMusic` |
+| `WebMusic` | 背景音樂的選項，見下面的「背景音樂」 | `model.MusicTrack` |
 | `WebSettings`、`WebProfile` | 存在瀏覽器裡的設定與上次的牌局 | `AppSettings`、`OnlineProfile` |
 | `Browser`、`Dom`、`AudioOut`、`GridTable`、`TileStrip` | 瀏覽器的小工具 | |
 
@@ -92,7 +93,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 - **背景分頁**：瀏覽器會放慢背景分頁的計時器，可能趕不上服務器 60 秒的限制。收到訊息時也會順便檢查該不該送 ping，牌局進行中服務器一直有訊息，就不靠計時器。真的斷了就靠重連。
 - **版本不合**：網頁和服務器分開部署，瀏覽器可能還留著舊版。服務器回 `protocolMismatch` 時會請玩家重新整理。
 - **房間列表**：看得到大廳時另外開一條不登入的連線，每 5 秒送 `listRooms`，換到房間或牌桌就關掉。列表沒變就不重畫，選取與連點兩下才不會被打斷。服務器還不認得 `listRooms` 時，只在列表那裡顯示說明，開房與用房號加入照樣能用。
-- **榮譽榜**：大廳的「榮譽榜」每次打開都另外開一條不登入的連線送 `honorRoll`，收到就關掉，視窗收掉時還沒回應的也關掉。資料是服務器記的連線牌局，和 Swing 版選單裡本機單機牌局的榮譽榜是分開的。解析放在 `HonorRollMessage`，不碰瀏覽器，`AllTests` 直接測；放在視窗類別裡的話，JVM 載入時會要 TeaVM 的 DOM 類別。
+- **榮譽榜**：大廳的「榮譽榜」每次打開都另外開一條不登入的連線送 `honorRoll`，收到就關掉，視窗收掉時還沒回應的也關掉。資料是服務器記的連線牌局，和 Swing 版選單裡本機單機牌局的榮譽榜是分開的。解析放在 `HonorRollMessage`，不碰瀏覽器，`AllTests` 直接測；放在視窗類別裡的話，JVM 載入時會要 TeaVM 的 DOM 類別。贏錢金額照底與每台分榜，選了「贏錢金額」時分頁下面多一個「底台」選單，打開時先看最近有新紀錄的那組（同一天的看底台大的），和 Swing 版一樣。分組讀服務器的 `winningsByStakes`；0.10.0 以前的服務器沒有，就把不分底台的 `winnings` 照底台分開。分組由網頁版自己做（`HonorRollMessage.StakesBoard`），不用 `ezmj` 新的 `HonorRoll.Stakes`，所以鎖定的 `9348070` 照樣編得過。
 - **在線人數**：`rooms` 的 `online`（連線數，看大廳的也算）與 `playingRooms`（進行中的牌局，私人房與一人房間也算）顯示在列表上面。`ezmjService` 0.4.0 和更早的版本沒有這兩個欄位，這一行就藏起來。
 - **等服務器**：開房間、加入、接回與開局送出後，整個畫面蓋上 `WaitingOverlay`，到換成房間或牌桌、出錯或斷線才收。跟電腦打是開好房間就接著開局，中間不收，畫面不會閃一下房間。
 - **跟電腦打**：一人房間一律是私人的，打完回到房間時別人不會從大廳加進來。
@@ -119,14 +120,31 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
   - `joinRoom` 與 `listRooms` 都帶 `supports` 的 `"substitute"`，服務器才讓我們中途加入、列表才有牌局中的房間。`RoomListing` 沒有 `playing` 與 `options.substitute`，`LobbyBrowser.roomFlags` 和專家模式一起直接看訊息，大廳列表的「隨時補位」欄打勾、牌局中的在名稱後面標「牌局中」。從列表加入牌局中的房間先用 `Dialog.confirm` 問一次（`OnlinePanel.SUBSTITUTE_CONFIRM`）。
   - 收到 `substituteWaiting` 就用可以取消的等待畫面蓋著（`Host.showSubstituteWaiting`），這時還沒有 `room`。取消就關掉連線，服務器發現斷線就讓出座位，所以中途斷線接回來時 token 已經失效，`loginRejected` 說座位讓出來了。之後的 `room` 不管是牌局中（上場）還是 `lobby`（整場先打完）都收掉等待的畫面。
   - 收到 `substituted` 就在牌桌上方跳公告（`TablePanel.announce`，DOM，在聊天泡泡那一層，點擊穿過去），那一家旁邊跳「補位」（`TableCanvas.showSeatBanner`），紀錄與聊天區（`appendSystemLine`）各留一行。文字在 `Substitution`，不碰瀏覽器，`AllTests` 直接測。上場的人之後就是一般的玩家，`soloTable` 這類看真人數的判斷照 `room` 跟著變。
-- **連莊**：計分表莊家的圓圈「莊」右邊寫紅色粗體的連莊次數，滑鼠停著寫「莊家，連N拉N」；中央方框在「剩餘 N 張」下面用紅色粗體寫「連N拉N」，三行一起往上挪，手機橫向的方框小，排得比較緊。Swing 版單機在擲骰子前演 1.5 秒的「連莊」大字，網頁的牌局都在服務器上，`dealMs` 只有 3 秒，和 Swing 版連線一樣先不演。
+- **連莊**：計分表莊家的圓圈「莊」右邊寫紅色粗體的連莊次數，滑鼠停著寫「莊家，連N拉N」；中央方框在「剩餘 N 張」下面用紅色粗體寫「連N拉N」，三行一起往上挪，手機橫向的方框小，排得比較緊。Swing 版單機在擲骰子前演 1.5 秒的「連莊」大字，網頁的牌局都在服務器上，`dealMs` 只有 3 秒，和 Swing 版連線一樣先不演，但司儀照樣說「連莊，連N拉N」（`TablePresenter.announceStreak`，收到 `roundStart` 之後的第一份局面時），見下面的「語音與司儀」。
+
+## 背景音樂
+
+和 Swing 版一樣六首，都循環播放，音量照「音樂音量」。選項在 `WebMusic`，名稱與標題和 `ezmj` 的 `model.MusicTrack` 一樣，存在設定裡的名稱也通用。網頁版自己列一份，不直接用 `MusicTrack`：workflow 的 `EZMJ_COMMIT` 固定在某個 commit，那一版的 `MusicTrack` 可能還沒有後來加的曲子，網頁版照樣要編得過、要有這些曲子。`AllTests` 對照 `MusicTrack`：它有的每一首網頁版都要有、標題一樣；它有 `recording()` 的話（用反射找，舊版沒有也編得過）檔名也要一樣。
+
+- **合成的四首**：樂譜在 `MusicScores`，由 `BackgroundMusic` 即時合成，見「和 Swing 版的差異」。
+- **錄好的兩首**「清空牌桌（Clear the Board）」「木板暖陽（Sunlight on the Floorboards）」：和 Swing 版 `src/ezmj/ui/music` 一樣的 MP3（192 kbps、約 3 分鐘，各約 4.3 MB），複製一份放在 `web/music`，`pom.xml` 照原樣複製不做取代。選到才用 `fetch` 下載，交給瀏覽器的 `decodeAudioData` 解碼，所以 CSP 的 `connect-src` 有 `'self'`；沒選的人不用下載，網站本身只多兩個檔案。網址不帶版號，改版不用重新下載，換曲子時改檔名。解碼後整首放進記憶體（48 kHz 立體聲約 70 MB），只留正在播的那首，換掉就放掉。
+- 錄好的曲子混音得比較大聲，解碼後算整首的 RMS，比 -17 dBFS 大聲就壓到 -17 dBFS（`WebMusic.levelGain`，和 Swing 版的 `RecordedMusic.level` 一樣），小聲的不放大。這兩首是 -14.3 dBFS，壓 2.7 dB。
+- 環境設定的選單在錄好的曲子前面畫一條線（`select` 裡的 `hr`，舊瀏覽器不畫），下面一行寫選了才下載。
+
+## 語音與司儀
+
+喊牌與司儀都用 Web Speech API，聲音看裝置有哪些中文語音，見 `Browser.speak`。
+
+- **喊牌**：女聲挑台灣的第一個女聲，男聲挑名字像男聲的（例如 Zhiwei），沒有男聲就壓低音調。新的一句打斷還沒喊完的上一句，牌局節奏快，喊慢了會跟不上。
+- **司儀**：照 Swing 版，是喊牌以外的另一個女聲，流局時說「流局」，連莊的局開始時說「連莊，連X拉X」，連一到連二十，再多只說「連莊」（`VoiceLines.streakText`）。念得慢 5%（rate 0.95），不調音高、不加驚嘆號；語音關掉時不說，音量跟著語音。聲音照 Swing 版的順序先找 Yating，再找 Edge 的 HsiaoChen、HsiaoYu，再來是 Hanhan，都要和喊牌的女聲不同；再沒有就用任何台灣女聲、任何中文女聲（粵語除外），都沒有才用喊牌的女聲。Windows 上的 Chrome 與 Edge 有 Hanhan、Yating、Zhiwei 時，喊牌是 Hanhan、司儀是 Yating，和 Swing 版一樣。
+- **排隊**：司儀不打斷正在喊的那句，排在後面；司儀說完之前（`window.ezmjAnnouncer`，最多 6 秒），牌名不喊，吃碰槓胡聽排在司儀後面，一定念到，和 Swing 版的「一句念完才念下一句」一樣。流局接著下一局的連莊也是一句念完才念下一句。
 
 ## 資安
 
 token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束就清掉。所以：
 
 - 文字一律用 `innerText`，不要用 `innerHTML`，玩家的名字來自網路。
-- `index.html` 的 CSP 只准執行網站自己的程式，也只准連服務器與本機。
+- `index.html` 的 CSP 只准執行網站自己的程式，也只准連服務器、本機與網站自己（`connect-src 'self'`，下載錄好的背景音樂）。GitHub Pages 是靜態網站，連回自己拿不走 token。
 - `?server=` 只有網頁開在本機時才有效，不然別人可以用一個連結把 token 騙走。
 
 ## 部署
@@ -151,8 +169,8 @@ token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束�
 | 牌桌上的聊天泡泡、Enter 聊天 | 網頁版才有 |
 | 牌桌上的名字 | 比 Swing 版大：中央方框四邊 17，Swing 是 14 |
 | 牌面的字 | 優先用系統的楷書，和 Swing 一樣；沒有時用 `web/fonts/ezmj-kai.woff2`，字形略有差異 |
-| 語音 | Web Speech API，聲音依裝置而異，沒有中文語音的裝置不出聲 |
-| 音樂 | 取樣率 22 kHz，瀏覽器只有一條執行緒，每次只合成一小段 |
+| 語音 | Web Speech API，聲音依裝置而異，沒有中文語音的裝置不出聲。沒有語音風格與「X索」的喊法。司儀的聲音由瀏覽器挑，不能先調成一樣大聲 |
+| 音樂 | 合成的曲子取樣率 22 kHz，瀏覽器只有一條執行緒，每次只合成一小段。錄好的曲子選到才下載，由瀏覽器解 MP3，不用轉檔，哪個平台都能播 |
 | 視窗大小 | 跟著瀏覽器縮放，沒有解析度選項 |
 | 手機 | 版面自動調整，見下面 |
 

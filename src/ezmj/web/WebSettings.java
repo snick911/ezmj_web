@@ -4,7 +4,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import ezmj.model.Gender;
-import ezmj.model.MusicTrack;
 import ezmj.online.Json;
 
 /** 環境設定，存在瀏覽器裡，預設值和 Swing 版一樣。等待時間與電腦速度看房間的設定，這裡沒有。 */
@@ -14,7 +13,7 @@ final class WebSettings {
 
     int fontPercent = 100;
     int tilePercent = 100;
-    MusicTrack music = MusicTrack.TEAHOUSE;
+    WebMusic music = WebMusic.TEAHOUSE;
     int musicVolume = 50;
     int soundVolume = 100;
     int voiceVolume = 100;
@@ -41,7 +40,7 @@ final class WebSettings {
             settings.sound = !Boolean.FALSE.equals(values.get("sound"));
             settings.voice = !Boolean.FALSE.equals(values.get("voice"));
             settings.animation = !Boolean.FALSE.equals(values.get("animation"));
-            settings.music = MusicTrack.valueOf(String.valueOf(values.get("music")));
+            settings.music = WebMusic.valueOf(String.valueOf(values.get("music")));
             settings.playerGender = Gender.valueOf(String.valueOf(values.get("playerGender")));
         } catch (RuntimeException e) {
             Browser.warn("環境設定讀不懂：" + e.getMessage());

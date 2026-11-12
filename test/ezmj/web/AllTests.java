@@ -1,7 +1,14 @@
 package ezmj.web;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 import ezmj.engine.WallRing;
 import ezmj.model.BotLevel;
@@ -32,11 +39,16 @@ public final class AllTests {
         protocolVersionFollowsSwingClient();
         messagesMatchServerReadme();
         honorRollFollowsServerOrder();
+        honorRollSplitsWinningsByStakes();
         createRoomCarriesEveryOption();
         lobbyReadsRoomFlags();
         substitutionTextNamesTheComputer();
         everyVoiceHasTheSameLength();
+        musicMatchesSwing();
+        recordingsAreShipped();
+        recordedMusicIsOnlyTurnedDown();
         voiceTextUsesTableNames();
+        announcerSaysTheStreak();
         diceMatchSwingClient();
         pdfOffsetsPointAtObjects();
         moneyIsGroupedByThousands();
@@ -100,6 +112,43 @@ public final class AllTests {
         same(wins.get(1).botLevelsLabel(), "初學者");
         check(roll.get(HonorRoll.Category.SELF_DRAWS).isEmpty(), "空的類別");
         check(roll.get(HonorRoll.Category.DEAL_INS).isEmpty(), "沒送的類別也是空的");
+        check(HonorRollMessage.winningsByStakes(message).isEmpty(), "沒有贏錢紀錄就沒有底台");
+        check(HonorRollMessage.latest(List.of()) == -1, "沒有底台可選");
+    }
+
+    /**
+     * 贏錢金額照服務器 README 的 winningsByStakes 分底台，依底再依每台由小到大；
+     * 0.10.0 以前的服務器只有不分底台的 winnings，自己照底台分開，順序照服務器的。
+     */
+    @SuppressWarnings("unchecked")
+    private static void honorRollSplitsWinningsByStakes() {
+        String small = "{\"name\":\"小明\",\"date\":\"2026-11-04\",\"wins\":1,\"selfDraws\":0,\"winnings\":900,\"dealIns\":0,"
+                + "\"botLevels\":[\"PRO\",\"PRO\",\"PRO\"],\"basePay\":100,\"taiPay\":20}";
+        String small2 = "{\"name\":\"小花\",\"date\":\"2026-11-06\",\"wins\":1,\"selfDraws\":0,\"winnings\":300,\"dealIns\":0,"
+                + "\"botLevels\":[\"PRO\",\"PRO\",\"PRO\"],\"basePay\":100,\"taiPay\":20}";
+        String big = "{\"name\":\"大戶\",\"date\":\"2026-11-06\",\"wins\":1,\"selfDraws\":0,\"winnings\":90000,\"dealIns\":0,"
+                + "\"botLevels\":[\"PRO\",\"PRO\",\"PRO\"],\"basePay\":1000,\"taiPay\":200}";
+        Map<String, Object> current = (Map<String, Object>) Json.parse("{\"type\":\"honorRoll\",\"winnings\":["
+                + big + "," + small + "," + small2 + "],\"winningsByStakes\":["
+                + "{\"basePay\":1000,\"taiPay\":200,\"records\":[" + big + "]},"
+                + "{\"basePay\":5,\"taiPay\":\"壞掉\",\"records\":[" + small + "]},"
+                + "{\"basePay\":300,\"taiPay\":50,\"records\":[]},"
+                + "{\"basePay\":100,\"taiPay\":20,\"records\":[" + small + "," + small2 + "]}]}");
+        List<HonorRollMessage.StakesBoard> boards = HonorRollMessage.winningsByStakes(current);
+        check(boards.size() == 2, "壞掉的與空的那組略過，剩兩組，實際 " + boards.size());
+        same(boards.get(0).label(), "底 100／每台 20");
+        same(boards.get(1).label(), "底 1,000／每台 200");
+        same(boards.get(0).records().get(0).name(), "小明");
+        same(boards.get(0).records().get(1).name(), "小花");
+        check(HonorRollMessage.latest(boards) == 1, "最近有新紀錄的，同一天取底台大的");
+
+        Map<String, Object> old = (Map<String, Object>) Json.parse("{\"type\":\"honorRoll\",\"winnings\":["
+                + big + "," + small + "," + small2 + "]}");
+        List<HonorRollMessage.StakesBoard> split = HonorRollMessage.winningsByStakes(old);
+        check(split.size() == 2, "舊服務器的照底台分成兩組");
+        same(split.get(0).label(), "底 100／每台 20");
+        check(split.get(0).records().size() == 2 && split.get(0).records().get(1).name().equals("小花"), "順序照服務器的");
+        same(split.get(1).records().get(0).name(), "大戶");
     }
 
     private static void createRoomCarriesEveryOption() {
@@ -162,10 +211,10 @@ public final class AllTests {
         check(rejected, "座位不對的訊息看不懂，照其他看不懂的訊息略過");
     }
 
-    /** 樂譜寫錯時各聲部會對不齊。 */
+    /** 樂譜寫錯時各聲部會對不齊。錄好的曲子沒有樂譜。 */
     private static void everyVoiceHasTheSameLength() {
-        for (MusicTrack track : MusicTrack.values()) {
-            if (track == MusicTrack.OFF) {
+        for (WebMusic track : WebMusic.values()) {
+            if (!track.isSynthesized()) {
                 continue;
             }
             MusicScores.Score score = MusicScores.score(track);
@@ -178,6 +227,110 @@ public final class AllTests {
                 }
                 check(Math.abs(beats - score.totalBeats()) < 1e-9, track + " 有一個聲部是 " + beats + " 拍");
             }
+        }
+    }
+
+    /**
+     * 網頁版自己列曲目，ezmj 有的每一首都要有，名稱與標題一樣，設定存的名稱才通用。
+     * 線上固定編譯的 ezmj 還沒有錄好的曲子時，網頁版多出來的照樣能用；有的話（MusicTrack 有 recording()）檔名也要一樣。
+     * 用反射找 recording()，舊版的 ezmj 沒有它也編得過。
+     */
+    private static void musicMatchesSwing() {
+        Method recording;
+        try {
+            recording = MusicTrack.class.getMethod("recording");
+        } catch (NoSuchMethodException e) {
+            recording = null;
+        }
+        for (MusicTrack track : MusicTrack.values()) {
+            WebMusic web;
+            try {
+                web = WebMusic.valueOf(track.name());
+            } catch (IllegalArgumentException e) {
+                throw new AssertionError("網頁版沒有 " + track + "，ezmj 加了曲子要跟著加");
+            }
+            same(web.label(), track.label());
+            if (recording != null) {
+                Object file;
+                try {
+                    file = recording.invoke(track);
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("讀不到 " + track + " 的錄音檔名", e);
+                }
+                check(Objects.equals(web.recording(), file), track + " 的錄音檔名應該是 " + file + "，實際是 " + web.recording());
+            }
+        }
+        check(WebMusic.OFF.ordinal() == 0 && !WebMusic.OFF.isSynthesized() && !WebMusic.OFF.isRecorded(), "關閉不是曲子");
+        check(WebMusic.CLEAR_THE_BOARD.isRecorded() && WebMusic.SUNLIGHT.isRecorded(), "兩首錄好的曲子");
+        same(WebMusic.SUNLIGHT.recordingUrl(), "music/sunlight_on_the_floorboards.mp3");
+        // 選單在第一首錄好的曲子前面畫線，錄好的曲子要排在合成的後面
+        boolean recorded = false;
+        for (WebMusic track : WebMusic.values()) {
+            check(!recorded || track.isRecorded(), track + " 排在錄好的曲子後面");
+            recorded |= track.isRecorded();
+        }
+    }
+
+    /** 網站帶著錄好的曲子，是整首的 MP3；web/music 裡沒有用不到的檔案。 */
+    private static void recordingsAreShipped() {
+        Path dir = Path.of("web", WebMusic.RECORDING_DIR);
+        int recordings = 0;
+        for (WebMusic track : WebMusic.values()) {
+            if (!track.isRecorded()) {
+                continue;
+            }
+            recordings++;
+            Path file = dir.resolve(track.recording());
+            byte[] head = new byte[3];
+            try (InputStream in = Files.newInputStream(file)) {
+                check(in.read(head) == 3, file + " 太短");
+                check(Files.size(file) > 1_000_000, file + " 不是整首，只有 " + Files.size(file) + " 位元組");
+            } catch (IOException e) {
+                throw new AssertionError("網站少了 " + file, e);
+            }
+            boolean id3 = head[0] == 'I' && head[1] == 'D' && head[2] == '3';
+            boolean frame = (head[0] & 0xFF) == 0xFF && (head[1] & 0xE0) == 0xE0;
+            check(id3 || frame, file + " 不是 MP3");
+        }
+        try (Stream<Path> files = Files.list(dir)) {
+            check(files.count() == recordings, "web/music 裡有用不到的檔案");
+        } catch (IOException e) {
+            throw new AssertionError("讀不到 " + dir, e);
+        }
+    }
+
+    /** 和 Swing 版的 RecordedMusic.level 一樣：比 -17 dBFS 大聲才壓到剛好，小聲的不放大。 */
+    private static void recordedMusicIsOnlyTurnedDown() {
+        check(WebMusic.TARGET_RMS_DB == -17, "目標和 Swing 版一樣是 -17 dBFS");
+        double gain = WebMusic.levelGain(-14.3);
+        check(Math.abs(20 * Math.log10(gain) - -2.7) < 1e-9, "-14.3 dBFS 壓 2.7 dB，實際倍率 " + gain);
+        check(WebMusic.levelGain(-17) == 1, "剛好不動");
+        check(WebMusic.levelGain(-19.9) == 1, "小聲的不放大");
+        check(WebMusic.levelGain(Double.NEGATIVE_INFINITY) == 1, "沒有聲音不動");
+    }
+
+    /** 司儀的話和 Swing 版的 VoiceLines 一樣；流局由司儀宣布，不在喊牌裡。 */
+    private static void announcerSaysTheStreak() {
+        same(VoiceLines.chineseNumber(1), "一");
+        same(VoiceLines.chineseNumber(10), "十");
+        same(VoiceLines.chineseNumber(12), "十二");
+        same(VoiceLines.chineseNumber(20), "二十");
+        same(VoiceLines.chineseNumber(99), "九十九");
+        same(VoiceLines.streakText(1), "連莊，連一拉一");
+        same(VoiceLines.streakText(2), "連莊，連二拉二");
+        same(VoiceLines.streakText(VoiceLines.MAX_ANNOUNCED_STREAK), "連莊，連二十拉二十");
+        same(VoiceLines.streakText(VoiceLines.MAX_ANNOUNCED_STREAK + 1), "連莊");
+        same(VoiceLines.streakText(35), "連莊");
+        boolean rejected = false;
+        try {
+            VoiceLines.streakText(0);
+        } catch (IllegalArgumentException e) {
+            rejected = true;
+        }
+        check(rejected, "沒有連莊不說");
+        same(VoiceLines.DRAWN_GAME_TEXT, "流局");
+        for (VoiceLines.Line line : VoiceLines.Line.values()) {
+            check(!line.text().equals("流局"), "喊牌不再有流局");
         }
     }
 

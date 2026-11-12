@@ -187,8 +187,22 @@ final class Browser {
             + "return meta ? meta.content : '';")
     static native String meta(String name);
 
-    /** 新的一句會打斷還沒喊完的上一句。male 表示要男聲，找不到男聲就靠壓低音調。 */
-    @JSBody(params = {"text", "male", "volume", "pitch", "rate"}, script = "if (!window.speechSynthesis) { return; }"
+    /** speak 的聲音：喊牌的女聲、男聲，以及司儀。 */
+    static final int VOICE_FEMALE = 0;
+    static final int VOICE_MALE = 1;
+    static final int VOICE_ANNOUNCER = 2;
+    /** 司儀的一句話最多等這麼久（包括排在正在喊的那句後面）。瀏覽器偶爾不通知說完了，過了這段時間喊牌就不再讓它。 */
+    private static final int ANNOUNCER_MAX_MS = 6_000;
+
+    /**
+     * 念一句話。voice 是 VOICE_FEMALE、VOICE_MALE 或 VOICE_ANNOUNCER；要男聲卻找不到男聲就靠壓低音調。
+     * 喊牌的新一句會打斷還沒喊完的上一句。司儀不打斷，排在正在喊的那句後面，和 Swing 版一樣一句念完才念下一句；
+     * 司儀說完之前，droppable 的牌名就不喊了，吃碰槓胡排在司儀後面，一定念到。
+     * 司儀挑和喊牌不同的女聲，依序找 Yating、HsiaoChen、HsiaoYu、Hanhan，再來是任何台灣女聲、任何中文女聲（粵語除外），
+     * 都沒有才用喊牌的女聲。
+     */
+    @JSBody(params = {"text", "voice", "volume", "pitch", "rate", "droppable"},
+            script = "if (!window.speechSynthesis) { return; }"
             + "var synth = window.speechSynthesis;"
             + "var voices = synth.getVoices();"
             + "var chinese = voices.filter(function (v) { return /^zh/i.test(v.lang); });"
@@ -196,17 +210,37 @@ final class Browser {
             + "var taiwan = chinese.filter(function (v) { return /TW/i.test(v.lang); });"
             + "var pool = taiwan.length > 0 ? taiwan : chinese;"
             + "var maleNames = /male|Zhiwei|Yunxi|Yunjhe|Yunyang|Kangkang|男/i;"
-            + "var matching = pool.filter(function (v) { return /female/i.test(v.name) ? !male : maleNames.test(v.name) === male; });"
+            + "function isMale(v) { return !/female/i.test(v.name) && maleNames.test(v.name); }"
+            + "var male = voice === 1;"
+            + "var matching = pool.filter(function (v) { return isMale(v) === male; });"
+            + "var chosen = matching.length > 0 ? matching[0] : pool[0];"
+            + "if (voice === 2) {"
+            + " var others = chinese.filter(function (v) {"
+            + "  return v !== chosen && !isMale(v) && !/HK|MO|yue/i.test(v.lang); });"
+            + " var named = null;"
+            + " ['Yating', 'HsiaoChen', 'HsiaoYu', 'Hanhan'].forEach(function (n) { if (!named) {"
+            + "  named = others.filter(function (v) { return v.name.indexOf(n) >= 0; })[0] || null; } });"
+            + " chosen = named || others.filter(function (v) { return /TW/i.test(v.lang); })[0] || others[0] || chosen; }"
             + "var utterance = new SpeechSynthesisUtterance(text);"
-            + "utterance.lang = 'zh-TW';"
-            + "var voice = matching.length > 0 ? matching[0] : pool[0];"
-            + "if (voice) { utterance.voice = voice; }"
+            + "utterance.lang = voice === 2 && chosen ? chosen.lang : 'zh-TW';"
+            + "if (chosen) { utterance.voice = chosen; }"
             + "utterance.volume = volume;"
             + "utterance.pitch = male && matching.length === 0 ? pitch * .6 : pitch;"
             + "utterance.rate = rate;"
+            + "var now = performance.now();"
+            + "if (voice === 2) {"
+            + " var state = {utterance: utterance, until: now + " + ANNOUNCER_MAX_MS + "};"
+            + " window.ezmjAnnouncer = state;"
+            + " utterance.onend = utterance.onerror = function () {"
+            + "  if (window.ezmjAnnouncer === state) { window.ezmjAnnouncer = null; } };"
+            + " synth.speak(utterance);"
+            + " return; }"
+            + "if (window.ezmjAnnouncer && window.ezmjAnnouncer.until > now) {"
+            + " if (!droppable) { synth.speak(utterance); }"
+            + " return; }"
             + "synth.cancel();"
             + "synth.speak(utterance);")
-    static native void speak(String text, boolean male, double volume, double pitch, double rate);
+    static native void speak(String text, int voice, double volume, double pitch, double rate, boolean droppable);
 
     @JSBody(script = "return !!window.speechSynthesis;")
     static native boolean canSpeak();

@@ -256,7 +256,17 @@ final class TablePresenter {
         return seat == SELF_SEAT ? settings.playerGender : table.round().player(seat).gender();
     }
 
-    /** 喊牌和大字同時出現，打牌時喊出打的是什麼牌。用出聲那一家的聲音；流局沒有特定的人，用女聲。 */
+    /**
+     * 連莊的局開始時司儀說「連莊，連N拉N」，和骰子同時，有沒有動畫都說。服務器只留 3 秒給骰子和發牌，
+     * 「連莊」的大字不演（和 Swing 版的連線對戰一樣），司儀照樣說。語音關著時不說。
+     */
+    void announceStreak(int streak) {
+        if (streak > 0 && settings.voice && !stopped) {
+            VoiceLines.announceStreak(streak);
+        }
+    }
+
+    /** 喊牌和大字同時出現，打牌時喊出打的是什麼牌。用出聲那一家的聲音；流局沒有特定的人，由司儀宣布。 */
     private void speak(RoundEvent event) {
         Gender gender = event.seat() < 0 ? Gender.FEMALE : voiceOf(event.seat());
         switch (event.type()) {
@@ -281,7 +291,7 @@ final class TablePresenter {
                 VoiceLines.play(VoiceLines.Line.SELF_WIN, gender);
                 break;
             case DRAWN_GAME:
-                VoiceLines.play(VoiceLines.Line.DRAWN_GAME, gender);
+                VoiceLines.announceDrawnGame();
                 break;
             case LISTEN:
                 VoiceLines.play(VoiceLines.Line.LISTEN, gender);

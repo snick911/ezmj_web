@@ -5,8 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import ezmj.model.MusicTrack;
-
 /**
  * 背景音樂的樂譜，全部是為這個遊戲寫的原創曲子，沒有版權問題。內容和 Swing 版的 MusicScores 一樣。
  * 音符記法：音名加八度與拍數，例如 E5:1.5；R 是休止，x 是木魚。
@@ -91,7 +89,8 @@ final class MusicScores {
     private MusicScores() {
     }
 
-    static Score score(MusicTrack track) {
+    /** 只有合成的曲子有樂譜，錄好的曲子與關閉沒有。 */
+    static Score score(WebMusic track) {
         switch (track) {
             case TEAHOUSE:
                 return TEAHOUSE;

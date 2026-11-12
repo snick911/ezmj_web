@@ -247,7 +247,11 @@ h1, h2, h3, p { margin: 0; }
 .activity-item::before { border-radius: 50%; content: ""; height: .55rem; width: .55rem; }
 .activity-item.online::before { background: #5BD08A; box-shadow: 0 0 .35rem rgba(91, 208, 138, .8); }
 .activity-item.playing::before { background: var(--gold); }
-.settings-card { width: min(26rem, 100%); }
+/* 寬到放得下最長的曲名「木板暖陽（Sunlight on the Floorboards）」 */
+.settings-card { width: min(30rem, 100%); }
+/* 背景音樂的選單佔滿標題右邊，錄好的曲子名字有中英文，比較長 */
+.music-row > span:first-child { white-space: nowrap; }
+.music-row .field { flex: 1 1 auto; min-width: 0; width: auto; }
 
 /* 表格 */
 .grid { border-collapse: collapse; }
@@ -557,6 +561,9 @@ h1, h2, h3, p { margin: 0; }
 .honor-card { width: min(60rem, 100%); }
 .honor-card > .btn { align-self: flex-start; }
 .honor-tabs { display: flex; flex-wrap: wrap; gap: .4rem; }
+/* 贏錢金額照底台分榜，選底台的選單放在分頁下面，靠左 */
+.honor-stakes { align-items: center; display: flex; gap: .6rem; }
+.honor-stakes .field { flex: 0 1 auto; min-width: 0; width: auto; }
 .honor-body { min-height: 8rem; }
 .honor-status { padding: 1rem 0; }
 .honor-scroll { max-height: 55vh; overflow: auto; }

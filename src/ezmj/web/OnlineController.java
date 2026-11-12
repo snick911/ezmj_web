@@ -569,6 +569,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         if (dealPending) {
             dealPending = false;
             view.appendLog(WallRing.announce(game, game.dice()));
+            presenter.announceStreak(game.streak());
             if (settings.animation) {
                 presenter.showDeal();
             } else {

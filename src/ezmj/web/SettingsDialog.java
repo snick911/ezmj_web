@@ -8,10 +8,11 @@ import org.teavm.jso.dom.html.HTMLOptionElement;
 import org.teavm.jso.dom.html.HTMLSelectElement;
 
 import ezmj.model.Gender;
-import ezmj.model.MusicTrack;
 
 /** 環境設定，改了立刻生效並存起來。等待時間與電腦速度是房間的設定，不在這裡。 */
 final class SettingsDialog extends Dialog {
+
+    static final String RECORDED_NOTE = "最後兩首是錄好的曲子，選了才下載（各約 4 MB），下載完才開始播放。";
 
     private final WebSettings settings;
     private final Runnable onResize;
@@ -54,7 +55,8 @@ final class SettingsDialog extends Dialog {
         if (!Browser.canSpeak()) {
             card.appendChild(Dom.text("div", "muted", "這個瀏覽器不支援語音，語音設定沒有作用。"));
         } else {
-            card.appendChild(Dom.text("div", "muted", "語音用瀏覽器的語音合成，聲音依裝置而異；沒有中文語音的裝置不會出聲。"));
+            card.appendChild(Dom.text("div", "muted", "語音是喊牌與司儀（宣布流局與連莊，用另一個女聲），"
+                    + "用瀏覽器的語音合成，聲音依裝置而異；沒有中文語音的裝置不會出聲。"));
         }
         card.appendChild(Dom.button("關閉", Theme.BUTTON, this::finish));
     }
@@ -109,17 +111,27 @@ final class SettingsDialog extends Dialog {
         select.appendChild(option);
     }
 
+    /**
+     * 合成的曲子與錄好的曲子中間隔一條線，和 Swing 版的選單一樣。選單裡的 hr 舊瀏覽器不畫，只是少一條線。
+     * 錄好的曲子選了才下載，下面寫一行讓人知道要等一下。
+     */
     private void addMusicRow() {
         HTMLSelectElement select = (HTMLSelectElement) Dom.el("select", "field");
-        for (MusicTrack track : MusicTrack.values()) {
+        boolean recorded = false;
+        for (WebMusic track : WebMusic.values()) {
+            if (track.isRecorded() && !recorded) {
+                select.appendChild(Dom.el("hr", ""));
+                recorded = true;
+            }
             addOption(select, track.name(), track.label(), track == settings.music);
         }
         select.addEventListener("change", event -> {
-            settings.music = MusicTrack.valueOf(select.getValue());
+            settings.music = WebMusic.valueOf(select.getValue());
             settings.save();
             BackgroundMusic.select(settings.music);
         });
-        row("背景音樂", select);
+        row("背景音樂", select).setClassName("form-row music-row");
+        card.appendChild(Dom.text("div", "muted", RECORDED_NOTE));
     }
 
     private void addGenderRow() {

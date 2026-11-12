@@ -21,7 +21,8 @@ public final class DevServer {
             "css", "text/css; charset=utf-8",
             "woff2", "font/woff2",
             "txt", "text/plain; charset=utf-8",
-            "svg", "image/svg+xml");
+            "svg", "image/svg+xml",
+            "mp3", "audio/mpeg");
 
     public static void main(String[] args) throws IOException {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : 8080;
