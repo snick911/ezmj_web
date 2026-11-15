@@ -300,8 +300,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
                 onError(String.valueOf(message.get("code")), String.valueOf(message.get("message")));
                 break;
             case "canListen":
-                // 一人房間在打牌前用聽牌按鈕選牌報聽，沒按就打出去的，打完不再問；專家模式沒有打牌前的提示，打完才問
-                if (presenter != null && (!soloTable() || expert)) {
+                // 在打牌前用聽牌按鈕選牌報聽，沒按就打出去的，打完不再問；專家模式沒有打牌前的提示，打完才問
+                if (presenter != null && expert) {
                     presenter.canListen(OnlineGame.parseListenOffer(message));
                 }
                 break;
@@ -551,8 +551,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         if (game == null) {
             return;
         }
-        askAgain = null;
         if (Round.Phase.FINISHED.name().equals(state.get("phase"))) {
+            askAgain = null;
             finishedState = state;
             return;
         }
@@ -565,6 +565,13 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         List<RoundEvent> events = takeEvents();
         game.applyState(state, events);
         bindRoundOnce();
+        if (stillAsked(events)) {
+            // 別家在自己決定的時候聽牌，服務器只是補送局面，還在等自己，按鈕與點牌都留著
+            view.refresh(game, game);
+            playEvents(events);
+            return;
+        }
+        askAgain = null;
         waiting = false;
         if (dealPending) {
             dealPending = false;
@@ -581,6 +588,23 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         view.refresh(game, game);
         playEvents(events);
         presenter.showIdle(idleHint());
+    }
+
+    /**
+     * 這份局面之後，服務器還在等自己這次的決定。多人房間裡別家隨時可以按聽牌，服務器聽牌後只補送局面，
+     * 不會再問一次，所以只有別家聽牌（或什麼事都沒有）的局面不能把等待收掉，不然輪到自己時就打不出牌。
+     * 自己聽牌的話，服務器改成自動決定，這次的宣告就不用了。
+     */
+    private boolean stillAsked(List<RoundEvent> events) {
+        if (!waiting || dealPending) {
+            return false;
+        }
+        for (RoundEvent event : events) {
+            if (event.type() != RoundEvent.Type.LISTEN || event.seat() == 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private List<RoundEvent> takeEvents() {
@@ -616,14 +640,6 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         return line;
     }
 
-    /**
-     * 跟電腦打的一人房間，對應 Swing 版的單機牌局：打牌前就能按聽牌。
-     * 開局後 room 的真人座位是開局時坐的人，有人離開也不會變。
-     */
-    private boolean soloTable() {
-        return room != null && room.playing() && room.seats().stream().filter(RoomInfo.Seat::human).count() == 1;
-    }
-
     private String idleHint() {
         return game.phase() == Round.Phase.TURN && game.current() != 0
                 ? "等待 " + game.player(game.current()).name() + " 出牌…" : " ";
@@ -636,8 +652,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         OnlineGame.TurnAsk ask = OnlineGame.parseTurn(message);
         waitId = ask.waitId();
         waiting = true;
-        // 打哪張會聽牌只給一人房間，聽牌按鈕在打牌前就出現；多人的房間與專家模式照舊，打完牌才問
-        Map<Tile, List<Tile>> ready = soloTable() && !expert ? ask.readyDiscards() : Map.of();
+        // 和 Swing 版的單機牌局一樣，聽牌按鈕在打牌前就出現，跟電腦打與多人的房間都是；專家模式照舊，打完牌才問
+        Map<Tile, List<Tile>> ready = expert ? Map.of() : ask.readyDiscards();
         askAgain = () -> presenter.askTurn(ask.waitId(), ask.options(), ready);
         askAgain.run();
     }
@@ -800,7 +816,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         }
     }
 
-    /** 一人房間的聽牌按鈕：打出這張並報聽，服務器的 listen。 */
+    /** 打牌前的聽牌按鈕：打出這張並報聽，服務器的 listen。 */
     @Override
     public void discardAndListen(int id, Tile tile) {
         if (sending(id)) {

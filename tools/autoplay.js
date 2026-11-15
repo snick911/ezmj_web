@@ -158,8 +158,8 @@
     }
     const text = hint.innerText;
     const actions = buttons('.action-buttons button');
-    // 多人的房間打出牌後聽牌了才有這顆，閒著或被問要不要宣告時都可能出現；一人房間是輪到自己、打了會聽牌時就有，
-    // 按了要再點一張金框的牌。都是按一半的機會
+    // 一般是輪到自己、打了會聽牌時就有，按了要再點一張金框的牌；專家模式打出牌後聽牌了才有這顆，
+    // 閒著或被問要不要宣告時都可能出現。都是按一半的機會
     const declare = actions.find((b) => b.innerText === '聽牌');
     if (declare && !S.listenSkipped) {
       if (Math.random() < .5) {

@@ -314,18 +314,20 @@ h1, h2, h3, p { margin: 0; }
   flex: 0 0 auto;
   flex-direction: column;
   gap: .375rem;
-  min-height: 5.25rem;
+  /* 放得下一行提示加一排吃碰槓胡，按鈕出現時牌桌不會跟著縮 */
+  min-height: 6.25rem;
   padding: .5rem .5rem .6rem;
 }
 .hint { color: var(--muted); font-size: .94rem; min-height: 1.3em; text-align: center; }
 .action-buttons { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
-/* 吃碰槓胡：比一般按鈕大，金框加光暈，一眼就看得到；胡與自摸再閃動 */
+/* 吃碰槓胡：比一般按鈕大很多，金框加光暈，一眼就看得到、手指也好按；胡與自摸再閃動 */
 .claim-button {
   border: 2px solid var(--gold);
   box-shadow: 0 0 .7rem rgba(232, 192, 90, .55);
-  font-size: 1.35rem;
-  min-width: 5.5rem;
-  padding: .5rem 1.4rem;
+  font-size: 1.8rem;
+  line-height: 1.2;
+  min-width: 7rem;
+  padding: .55rem 1.8rem;
 }
 /* 打牌前的聽牌：可以用、但不一定要按，平常半透明不閃，滑鼠移上去或按著才不透明 */
 .translucent-button { box-shadow: none; opacity: .5; transition: opacity .15s; }
@@ -554,6 +556,8 @@ h1, h2, h3, p { margin: 0; }
   flex: 0 0 auto;
   height: auto;
   width: min(100%, calc((100vh - 13rem) * .8));
+  /* 手機的網址列會伸縮，和其他視窗一樣照看得到的高度，按鈕才不會被擠出畫面 */
+  width: min(100%, calc((100dvh - 13rem) * .8));
 }
 
 /* 榮譽榜：四個類別是分頁，表格多了自己捲動，表頭固定 */
@@ -636,13 +640,13 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
     z-index: 4;
   }
 
-  /* 直向：動作列在牌桌下面 */
-  .action-bar { min-height: 4.6rem; padding: .3rem .4rem .4rem; position: relative; }
+  /* 直向：動作列在牌桌下面，和電腦版一樣先留好一排吃碰槓胡的高度，按鈕出現時手牌不會往上跳 */
+  .action-bar { min-height: 7rem; padding: .3rem .4rem .4rem; position: relative; }
   .menu-button { position: absolute; right: .4rem; top: .3rem; }
   .fullscreen-button { left: .4rem; position: absolute; top: .3rem; }
   .hint { min-height: 2.7rem; padding: 0 4.6rem; }
   .action-buttons { gap: .4rem; }
-  .claim-button { min-width: 4.6rem; padding: .4rem 1rem; }
+  .claim-button { font-size: 1.65rem; min-width: 5.6rem; padding: .45rem 1.2rem; }
 
   /* 視窗 */
   .floating { left: .5rem; right: .5rem; top: .5rem; transform: none; }
@@ -731,5 +735,5 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
     width: var(--act-width);
   }
   .action-buttons .btn { flex: 0 0 auto; pointer-events: auto; }
-  .claim-button { font-size: 1.2rem; min-width: 2.8rem; padding: .3rem .6rem; }
+  .claim-button { font-size: 1.5rem; min-width: 3.6rem; padding: .35rem .85rem; }
 }

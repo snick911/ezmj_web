@@ -30,7 +30,17 @@ import ezmj.model.Tile;
  */
 final class TableCanvas {
 
+    /** 打出的牌飛到亮牌的位置，落地的聲音在這時候響。 */
     static final int DISCARD_FLIGHT_MS = 190;
+    /**
+     * 打出的牌先放大、轉成正著給自己看，停 DISCARD_SHOW_MS，再縮小飛進牌河，花 DISCARD_SETTLE_MS。
+     * 全部大約 0.7 秒，中速時下一家打牌前演得完；下一張打得更快就直接落進牌河。
+     */
+    private static final int DISCARD_SHOW_MS = 300;
+    private static final int DISCARD_SETTLE_MS = 200;
+    /** 亮牌最大是棄牌的幾倍寬，和自己的手牌差不多大；地方不夠時縮小，但至少這麼大。 */
+    private static final double SHOW_SCALE = 2.2;
+    private static final double SHOW_MIN_SCALE = 1.5;
     static final int CLAIM_FLIGHT_MS = 240;
     static final int DRAW_FLIGHT_MS = 170;
     private static final int FLOWER_FLIGHT_MS = 260;
@@ -199,12 +209,20 @@ final class TableCanvas {
     private enum Slot { DISCARD, MELD, DRAWN, FLOWER }
 
     /**
+     * 打出的牌中途停下來亮給大家看的地方：中心 (x, y)、寬 w，以牌桌中心為原點，牌是正著的。
+     * turn 是從打牌那家的角度轉到正著要轉幾弧度，飛進牌河時再轉回去。
+     */
+    private record Showcase(double x, double y, double w, double turn) {
+    }
+
+    /**
      * 飛行中的一張牌。位置以牌桌中心為原點，指牌的中心點。
      * 飛行時對應的那張牌不畫出來，落地後才出現。slotIndex 是面子或花牌裡的第幾張，其他地方用不到。
+     * show 不是 null 時是打出的牌：先飛到 show 放大亮牌，再飛進牌河，durationMs 是全部的時間。
      */
     private record Flight(Tile tile, boolean faceDown, double fromX, double fromY, double fromAngle, double fromW,
                           double toX, double toY, double toAngle, double toW, double start, int durationMs,
-                          Slot slot, int slotSeat, int slotIndex) {
+                          Slot slot, int slotSeat, int slotIndex, Showcase show) {
         double progress(double now) {
             return (now - start) / durationMs;
         }
@@ -801,8 +819,29 @@ final class TableCanvas {
         Point target = toTable(seat, to.x(), to.y());
         double w = (DISCARD_W - 1) * tableUnit();
         flights.add(new Flight(event.tile(), false, from.x(), from.y(), seatAngle(seat), fromW,
-                target.x(), target.y(), seatAngle(seat), w, Browser.now(), DISCARD_FLIGHT_MS,
-                Slot.DISCARD, seat, -1));
+                target.x(), target.y(), seatAngle(seat), w, Browser.now(),
+                DISCARD_FLIGHT_MS + DISCARD_SHOW_MS + DISCARD_SETTLE_MS, Slot.DISCARD, seat, -1, showcase(seat)));
+    }
+
+    /**
+     * 打出的牌亮在哪裡：打牌那家面前、牌桌中心到他手牌的中間，正著擺，每一家打的都轉成給自己看的方向。
+     * 牌大約是棄牌的 2.2 倍寬；沿著那家方向的長度（上下兩家是牌高、左右兩家是牌寬）不超過中間空地的七成。
+     * 放得下的話不蓋到中央方框與牌牆，直向手機的左右兩家空地窄，才不會整張壓在方框上。
+     */
+    private Showcase showcase(int seat) {
+        double unit = tableUnit();
+        double room = halfDepth(seat) - (seat == 0 ? humanRowDepth() : botRowDepth());
+        double ratio = DISCARD_H / DISCARD_W;
+        double alongAxis = seat % 2 == 0 ? ratio : 1;
+        double w = Math.min(DISCARD_W * SHOW_SCALE * unit, room * .7 / alongAxis);
+        w = Math.max(w, DISCARD_W * SHOW_MIN_SCALE * unit);
+        double extent = w * alongAxis;
+        double inner = wallTop() * unit + extent / 2 + 4 * unit;
+        double outer = room - extent / 2 - 4 * unit;
+        double distance = inner <= outer ? Math.min(Math.max(room * .5, inner), outer) : room * .5;
+        Point at = toTable(seat, 0, distance);
+        double turn = Math.IEEEremainder(-seatAngle(seat), Math.PI * 2);
+        return new Showcase(at.x(), at.y(), w, turn);
     }
 
     /** 被吃碰槓的牌從棄牌區飛進新面子，同時跳出大字。 */
@@ -825,7 +864,7 @@ final class TableCanvas {
         double turn = Math.IEEEremainder(seatAngle(seat) - seatAngle(event.from()), Math.PI * 2);
         flights.add(new Flight(event.tile(), false, from.x(), from.y(), seatAngle(event.from()),
                 (DISCARD_W - 1) * tableUnit(), to.x(), to.y(), seatAngle(event.from()) + turn, row.tileW(),
-                Browser.now(), CLAIM_FLIGHT_MS, Slot.MELD, seat, tileIndex));
+                Browser.now(), CLAIM_FLIGHT_MS, Slot.MELD, seat, tileIndex, null));
         addSeatBanner(seat, text);
     }
 
@@ -859,7 +898,7 @@ final class TableCanvas {
         double toAngle = fromAngle + Math.IEEEremainder(seatAngle(seat) - fromAngle, Math.PI * 2);
         flights.add(new Flight(event.tile(), seat != 0, from.x(), from.y(), fromAngle, fromW,
                 to.x(), to.y(), toAngle, row.tileW(), Browser.now(), DRAW_FLIGHT_MS,
-                Slot.DRAWN, seat, -1));
+                Slot.DRAWN, seat, -1, null));
     }
 
     /** 花牌從手牌亮出來，飛到該家的花牌列，旁邊跳出小一點的字。補的牌接著從牌尾飛過來。 */
@@ -886,7 +925,7 @@ final class TableCanvas {
         }
         flights.add(new Flight(event.tile(), false, from.x(), from.y(), seatAngle(seat), row.tileW(),
                 to.x(), to.y(), toAngle, toW - 1, Browser.now(), FLOWER_FLIGHT_MS,
-                Slot.FLOWER, seat, index));
+                Slot.FLOWER, seat, index, null));
         addSeatBanner(seat, "補花", 34 * unit(), FLOWER_BANNER_MS);
     }
 
@@ -1029,6 +1068,10 @@ final class TableCanvas {
             }
             return;
         }
+        if (flight.show() != null) {
+            paintShowcaseFlight(g, flight);
+            return;
+        }
         double eased = easeOut(Math.max(0, t));
         double x = flight.fromX() + (flight.toX() - flight.fromX()) * eased;
         double y = flight.fromY() + (flight.toY() - flight.fromY()) * eased;
@@ -1043,6 +1086,68 @@ final class TableCanvas {
             TilePainter.paintFace(g, flight.tile(), -w / 2, -h / 2, w, h);
         }
         g.setTransform(saved);
+    }
+
+    /**
+     * 打出的牌：從手牌飛到亮牌的位置，一邊轉正一邊放大到比亮牌再大一點；停下來時彈回原本大小，
+     * 外面一圈金光淡入淡出；最後縮小、轉回打牌那家的方向，飛進牌河。
+     */
+    private void paintShowcaseFlight(Gfx g, Flight flight) {
+        Showcase show = flight.show();
+        double elapsed = Math.max(0, frameNow - flight.start());
+        double upright = flight.fromAngle() + show.turn();
+        double x;
+        double y;
+        double angle;
+        double w;
+        double glow;
+        if (elapsed < DISCARD_FLIGHT_MS) {
+            double p = easeOut(elapsed / DISCARD_FLIGHT_MS);
+            x = flight.fromX() + (show.x() - flight.fromX()) * p;
+            y = flight.fromY() + (show.y() - flight.fromY()) * p;
+            angle = flight.fromAngle() + show.turn() * p;
+            w = flight.fromW() + (show.w() * 1.12 - flight.fromW()) * p;
+            glow = 0;
+        } else if (elapsed < DISCARD_FLIGHT_MS + DISCARD_SHOW_MS) {
+            double q = (elapsed - DISCARD_FLIGHT_MS) / DISCARD_SHOW_MS;
+            x = show.x();
+            y = show.y();
+            angle = upright;
+            w = show.w() * (1.12 - .12 * easeOut(Math.min(1, q * 2.5)));
+            glow = Math.sin(Math.PI * q);
+        } else {
+            double r = Math.min(1, (elapsed - DISCARD_FLIGHT_MS - DISCARD_SHOW_MS) / DISCARD_SETTLE_MS);
+            double p = easeInOut(r);
+            x = show.x() + (flight.toX() - show.x()) * p;
+            y = show.y() + (flight.toY() - show.y()) * p;
+            angle = upright + (flight.toAngle() - upright) * p;
+            w = show.w() + (flight.toW() - show.w()) * p;
+            glow = 0;
+        }
+        double h = w * DISCARD_H / DISCARD_W;
+        double[] saved = g.transform();
+        double savedAlpha = g.alpha();
+        g.translate(x, y);
+        g.rotate(angle);
+        // 陰影讓牌浮在牌桌上
+        double shadow = w * .06;
+        g.color("rgba(0,0,0,.35)");
+        g.fillRoundRect(-w / 2 + shadow, -h / 2 + shadow, w, h, w * .3);
+        if (glow > 0) {
+            double pad = w * .1;
+            for (int layer = 2; layer >= 0; layer--) {
+                g.color(withAlpha(Theme.GOLD, glow * (layer == 0 ? .9 : .3 / layer)));
+                g.stroke(Math.max(1.5, w * (.05 + layer * .06)));
+                g.drawRoundRect(-w / 2 - pad / 2, -h / 2 - pad / 2, w + pad, h + pad, w * .3);
+            }
+        }
+        TilePainter.paintFace(g, flight.tile(), -w / 2, -h / 2, w, h);
+        g.setTransform(saved);
+        g.alpha(savedAlpha);
+    }
+
+    private static double easeInOut(double t) {
+        return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     }
 
     private void paintLandingRing(Gfx g, Flight flight, double t) {

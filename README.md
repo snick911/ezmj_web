@@ -103,11 +103,9 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
   - 牌桌上的泡泡蓋在畫布上，位置由 `TableCanvas.syncChatAnchors` 寫在 CSS 變數 `--chat-x0` 到 `--chat-y3`，和 `--hint-*` 一樣用 `style.setProperty`。
   - 在牌桌上按 Enter 跳出輸入框。按鍵聽整頁的，牌桌換掉之後第一次按鍵時拿掉；游標在輸入框、按鈕或連結上、有 `.backdrop` 或 `.waiting` 蓋著，或輸入法還在選字時不搶。
 - **擲骰子與牌牆**：照 Swing 版，規則與時間見 `ezmj` README 的「擲骰子與牌牆」。服務器沒有送骰子，用 `OnlineGame.dice` 從房號、莊家、圈風、局風與連莊數算，和同桌的 Swing 版一樣；`AllTests` 比對一組固定的點數，算法改了兩邊要一起改。骰子加發牌約 2.4 秒，要在 `roundStart` 的 `dealMs`（3 秒）之內。
-- **聽牌**（程式與協定叫報聽，畫面上一律寫「聽牌」，紀錄裡 `OnlineGame.describe` 的「報聽」也換掉）：照 Swing 版，單機與連線不同。
-  - 跟電腦打的一人房間對應 Swing 版的單機牌局，在打牌之前聽牌：`askTurn` 的 `readyDiscards` 有東西時，動作列多一個半透明的「聽牌」（平常 50% 不透明，滑鼠移上去才不透明，不閃）。按了打出去會聽牌的牌加上金框、其他蓋起來，提示列出打哪張聽哪些牌；點一張就送 `listen`（打出並報聽），「取消」回到一般打牌。沒按就打出去的，服務器照樣送 `canListen`，網頁不理。
-  - 一人房間看 `room` 的真人座位：開局後服務器送的是開局時坐的人，有人離開也不會變，見 `OnlineController.soloTable`。
-  - 多人的房間照舊：打出牌後服務器送 `canListen` 才出現「聽牌」按鈕，按了送 `declareListen`。
-  - 專家模式和多人的房間一樣，打完牌才問。
+- **聽牌**（程式與協定叫報聽，畫面上一律寫「聽牌」，紀錄裡 `OnlineGame.describe` 的「報聽」也換掉）：照 Swing 版的單機牌局。
+  - 跟電腦打與多人的房間都在打牌之前聽牌：`askTurn` 的 `readyDiscards` 有東西時，動作列多一個半透明的「聽牌」（平常 50% 不透明，滑鼠移上去才不透明，不閃）。按了打出去會聽牌的牌加上金框、其他蓋起來，提示列出打哪張聽哪些牌；點一張就送 `listen`（打出並報聽），「取消」回到一般打牌。沒按就打出去的，服務器照樣送 `canListen`，網頁不理。
+  - 專家模式打完牌才問：服務器不給 `readyDiscards`，打出牌後送 `canListen` 才出現「聽牌」按鈕，按了送 `declareListen`。這個機會一直到下一次摸牌、吃碰槓或這局結束，所以別家可能在你出牌時聽牌；服務器聽牌後只補送一份 `state`、不會再問一次，`OnlineController.stillAsked` 讓這種局面不收掉自己的等待。
 - **專家模式**：照 Swing 版的單機專家模式（`ezmj` 0.14.0），跟電腦打與開房間的設定視窗都有這個勾選。是房間設定，要 `ezmjService` 0.7.0：`createRoom` 帶 `expert`，房間的每個人都照 `room` 的 `options.expert` 打。
   - 勾選框只寫「開啟」，房間畫面只留「專家」標籤；有哪些不一樣（`HelpDialog.EXPERT_SUMMARY`）只寫在說明的「簡介」與「建立牌局」。
   - 每次最多等 10 秒（`OnlinePanel.EXPERT_MAX_WAIT_SECONDS`，和 Swing 版的 `GameConfig.EXPERT_MAX_WAIT_SECONDS`、服務器的 `RoomOptions` 一樣）：勾了就把等待秒數的範圍改小，比較長的改成 10 並記著，取消勾選時還原（`OnlinePanel.syncWaitLimit`）；勾著又填了比較長的，送出時提醒。服務器也會把比較長的改成 10。
@@ -119,7 +117,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 - **隨時補位**：開房間的設定才有（跟電腦打是私人的一人房間，沒有人會來補）。是房間設定，要 `ezmjService` 0.10.0：`createRoom` 帶 `substitute`，流程見服務器 README 的「隨時補位」。
   - `joinRoom` 與 `listRooms` 都帶 `supports` 的 `"substitute"`，服務器才讓我們中途加入、列表才有牌局中的房間。`RoomListing` 沒有 `playing` 與 `options.substitute`，`LobbyBrowser.roomFlags` 和專家模式一起直接看訊息，大廳列表的「隨時補位」欄打勾、牌局中的在名稱後面標「牌局中」。從列表加入牌局中的房間先用 `Dialog.confirm` 問一次（`OnlinePanel.SUBSTITUTE_CONFIRM`）。
   - 收到 `substituteWaiting` 就用可以取消的等待畫面蓋著（`Host.showSubstituteWaiting`），這時還沒有 `room`。取消就關掉連線，服務器發現斷線就讓出座位，所以中途斷線接回來時 token 已經失效，`loginRejected` 說座位讓出來了。之後的 `room` 不管是牌局中（上場）還是 `lobby`（整場先打完）都收掉等待的畫面。
-  - 收到 `substituted` 就在牌桌上方跳公告（`TablePanel.announce`，DOM，在聊天泡泡那一層，點擊穿過去），那一家旁邊跳「補位」（`TableCanvas.showSeatBanner`），紀錄與聊天區（`appendSystemLine`）各留一行。文字在 `Substitution`，不碰瀏覽器，`AllTests` 直接測。上場的人之後就是一般的玩家，`soloTable` 這類看真人數的判斷照 `room` 跟著變。
+  - 收到 `substituted` 就在牌桌上方跳公告（`TablePanel.announce`，DOM，在聊天泡泡那一層，點擊穿過去），那一家旁邊跳「補位」（`TableCanvas.showSeatBanner`），紀錄與聊天區（`appendSystemLine`）各留一行。文字在 `Substitution`，不碰瀏覽器，`AllTests` 直接測。上場的人之後就是一般的玩家。
 - **連莊**：計分表莊家的圓圈「莊」右邊寫紅色粗體的連莊次數，滑鼠停著寫「莊家，連N拉N」；中央方框在「剩餘 N 張」下面用紅色粗體寫「連N拉N」，三行一起往上挪，手機橫向的方框小，排得比較緊。Swing 版單機在擲骰子前演 1.5 秒的「連莊」大字，網頁的牌局都在服務器上，`dealMs` 只有 3 秒，和 Swing 版連線一樣先不演，但司儀照樣說「連莊，連N拉N」（`TablePresenter.announceStreak`，收到 `roundStart` 之後的第一份局面時），見下面的「語音與司儀」。
 
 ## 背景音樂

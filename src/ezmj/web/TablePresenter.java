@@ -312,7 +312,7 @@ final class TablePresenter {
 
     /**
      * 輪到自己。readyDiscards 是打哪張牌會聽哪些牌，有的話多一個半透明的聽牌按鈕，按了選要打的牌，打出就報聽；
-     * 一人房間才給。空的話照舊，打牌後聽牌了服務器會再問要不要報聽。
+     * 專家模式不給。空的話照舊，打牌後聽牌了服務器會再問要不要報聽。
      */
     void askTurn(int waitId, TurnOptions options, Map<Tile, List<Tile>> readyDiscards) {
         promptId = waitId;
