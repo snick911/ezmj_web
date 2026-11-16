@@ -38,9 +38,11 @@ final class TableCanvas {
      */
     private static final int DISCARD_SHOW_MS = 300;
     private static final int DISCARD_SETTLE_MS = 200;
-    /** 亮牌最大是棄牌的幾倍寬，和自己的手牌差不多大；地方不夠時縮小，但至少這麼大。 */
-    private static final double SHOW_SCALE = 2.2;
+    /** 亮牌最大是棄牌的幾倍寬，比自己的手牌大四成左右；地方不夠時縮小，但至少這麼大。 */
+    private static final double SHOW_SCALE = 3.0;
     private static final double SHOW_MIN_SCALE = 1.5;
+    /** 亮牌沿著打牌那家方向的長度，最多佔牌桌中心到他手牌之間的幾成。 */
+    private static final double SHOW_ROOM = .8;
     static final int CLAIM_FLIGHT_MS = 240;
     static final int DRAW_FLIGHT_MS = 170;
     private static final int FLOWER_FLIGHT_MS = 260;
@@ -859,7 +861,7 @@ final class TableCanvas {
 
     /**
      * 打出的牌亮在哪裡：打牌那家面前、牌桌中心到他手牌的中間，正著擺，每一家打的都轉成給自己看的方向。
-     * 牌大約是棄牌的 2.2 倍寬；沿著那家方向的長度（上下兩家是牌高、左右兩家是牌寬）不超過中間空地的七成。
+     * 牌大約是棄牌的 3 倍寬；沿著那家方向的長度（上下兩家是牌高、左右兩家是牌寬）不超過中間空地的八成。
      * 放得下的話不蓋到中央方框與牌牆，直向手機的左右兩家空地窄，才不會整張壓在方框上。
      */
     private Showcase showcase(int seat) {
@@ -867,7 +869,7 @@ final class TableCanvas {
         double room = halfDepth(seat) - (seat == 0 ? humanRowDepth() : botRowDepth());
         double ratio = DISCARD_H / DISCARD_W;
         double alongAxis = seat % 2 == 0 ? ratio : 1;
-        double w = Math.min(DISCARD_W * SHOW_SCALE * unit, room * .7 / alongAxis);
+        double w = Math.min(DISCARD_W * SHOW_SCALE * unit, room * SHOW_ROOM / alongAxis);
         w = Math.max(w, DISCARD_W * SHOW_MIN_SCALE * unit);
         double extent = w * alongAxis;
         double inner = wallTop() * unit + extent / 2 + 4 * unit;
