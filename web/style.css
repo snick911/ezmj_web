@@ -339,6 +339,20 @@ h1, h2, h3, p { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .win-button { animation: none; }
 }
+/* 胡與自摸外面的一圈火焰（FlameFrame）：畫布比按鈕大出去，畫在按鈕後面、不擋點擊。
+   外框不佔比按鈕多的位置，動作列不會因為火焰變高；火焰往上伸到提示後面，所以提示疊在上面 */
+.flame-frame { display: inline-flex; position: relative; }
+.flame-frame .btn { position: relative; z-index: 1; }
+.flame-canvas {
+  height: calc(100% + 1.85rem);
+  left: -1.2rem;
+  pointer-events: none;
+  position: absolute;
+  top: -1.5rem;
+  width: calc(100% + 2.4rem);
+  z-index: 0;
+}
+.hint { position: relative; z-index: 2; }
 .sidebar {
   background: var(--panel);
   display: flex;
@@ -539,7 +553,9 @@ h1, h2, h3, p { margin: 0; }
 
 /* 結果視窗 */
 .result-card { width: fit-content; }
-.result-tables { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 1.25rem; }
+.result-tables { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 1.25rem 2.25rem; }
+/* 牌型台數那一張至少這麼寬，牌型的名字和台數之間才不會擠在一起，和 Swing 版一樣是 300 */
+.result-tables .grid:first-child { min-width: 18.75rem; }
 .result-tables .grid:last-child { flex: 1; }
 .other-hands { align-items: center; display: grid; gap: .125rem .75rem; grid-template-columns: auto 1fr; }
 .tile-strip { display: block; }
@@ -659,7 +675,7 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   /* 視窗要捲動時，下一局的按鈕固定在底部，不用捲也按得到 */
   .result-card > .btn { align-self: stretch; bottom: 0; flex: 0 0 auto; position: sticky; }
   .result-tables { gap: .5rem; }
-  .result-tables .grid { width: 100%; }
+  .result-tables .grid, .result-tables .grid:first-child { min-width: 0; width: 100%; }
   .grid th, .grid td { padding: .25rem .35rem; }
   .other-hands { grid-template-columns: minmax(0, 1fr); }
   /* 一排牌比螢幕寬時等比例縮小。尺寸寫在元素上，所以要 important */

@@ -49,14 +49,16 @@ final class Messages {
         return object("type", "createRoom", "chips", settings.chips(), "basePay", settings.basePay(),
                 "taiPay", settings.taiPay(), "botLevels", levels, "waitSeconds", settings.waitSeconds(),
                 "speed", settings.speed().name(), "name", settings.name(), "private", settings.privateRoom(),
-                "expert", expert, "substitute", substitute);
+                "expert", expert, "substitute", substitute, "supports", SUPPORTS);
     }
 
     /**
      * 網頁會照專家模式藏資訊，所以告訴服務器可以讓我們加入專家模式的房間；
      * 也看得懂補位的訊息，所以可以中途加入隨時補位的牌局，大廳也要列出那些牌局。
+     * listenWin 是聽牌後等的牌來了，服務器先問、讓玩家自己按「胡」（ezmjService 0.12.0 起），開房間與加入都要說；
+     * 更舊的服務器不理，照舊直接自動胡。
      */
-    private static final List<String> SUPPORTS = List.of("expert", "substitute");
+    private static final List<String> SUPPORTS = List.of("expert", "substitute", "listenWin");
 
     /** 不用登入。說會補位，列表才有可以補位的牌局；舊服務器不理 supports。 */
     static Map<String, Object> listRooms() {

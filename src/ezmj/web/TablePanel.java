@@ -41,9 +41,18 @@ final class TablePanel {
     private static final int ANNOUNCE_FADE_MS = 600;
 
     /** 動作列上的一個按鈕。translucent 的按鈕半透明，表示可以用但不一定要按。 */
-    record ActionItem(String label, String color, Runnable run, boolean translucent) {
+    record ActionItem(String label, String color, Runnable run, boolean translucent, boolean flame) {
         ActionItem(String label, String color, Runnable run) {
-            this(label, color, run, false);
+            this(label, color, run, false, false);
+        }
+
+        ActionItem(String label, String color, Runnable run, boolean translucent) {
+            this(label, color, run, translucent, false);
+        }
+
+        /** 胡與自摸的按鈕：外面一圈跳動的火焰，見 FlameFrame。 */
+        static ActionItem flaming(String label, String color, Runnable run) {
+            return new ActionItem(label, color, run, false, true);
         }
     }
 
@@ -445,6 +454,11 @@ final class TablePanel {
         canvas.animate(event);
     }
 
+    /** 流局：牌牆剩下的牌在牌桌中間翻開，見 TableCanvas.revealWall。 */
+    void revealWall(List<Tile> tiles, boolean animated) {
+        canvas.revealWall(tiles, animated);
+    }
+
     void animateDeal() {
         canvas.animateDeal();
     }
@@ -529,7 +543,7 @@ final class TablePanel {
             } else if (!Theme.PANEL_LIGHT.equals(action.color())) {
                 button.setClassName("btn claim-button");
             }
-            actionButtons.appendChild(button);
+            actionButtons.appendChild(action.flame() ? new FlameFrame(button).element() : button);
         }
     }
 }

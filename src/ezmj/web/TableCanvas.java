@@ -54,6 +54,15 @@ final class TableCanvas {
     private static final double GOLDEN_ANGLE = 2.39996323;
     private static final String BIG_WIN_TOP = "rgba(201,58,50,.922)";
     private static final String BIG_WIN_BOTTOM = "rgba(110,18,14,.922)";
+    /**
+     * 流局時把牌牆剩下的牌一張一張翻開給大家看，和 Swing 版一樣：「流局」的大字出來 REVEAL_DELAY_MS 之後開始，
+     * 每張隔 REVEAL_INTERVAL_MS、翻 REVEAL_TILE_MS，全部翻完再停 REVEAL_HOLD_MS 才跳出結果。一排 REVEAL_COLUMNS 張。
+     */
+    static final int REVEAL_DELAY_MS = 900;
+    static final int REVEAL_INTERVAL_MS = 110;
+    private static final int REVEAL_TILE_MS = 160;
+    private static final int REVEAL_HOLD_MS = 1300;
+    private static final int REVEAL_COLUMNS = 8;
     /** 報聽時「聽」標記彈出來、外面兩個圈擴散的時間。 */
     static final int LISTEN_BADGE_MS = 900;
     /** 吃碰槓後要打牌時，手牌外框一明一暗的週期。 */
@@ -295,6 +304,9 @@ final class TableCanvas {
     /** 吃碰槓後要打牌，手牌外框亮起。 */
     private boolean discardPrompt;
     private double promptStart;
+    /** 流局時牌牆剩下的牌，從牌頭到牌尾；沒有流局或舊服務器沒有送時是空的。revealStart 是開始翻的時間。 */
+    private List<Tile> revealTiles = List.of();
+    private double revealStart;
     private boolean repaintRequested;
     private boolean hitsStale;
     private int width;
@@ -350,10 +362,32 @@ final class TableCanvas {
         banners.clear();
         Arrays.fill(listenStart, 0);
         Arrays.fill(shownDiscards, 0);
+        revealTiles = List.of();
         discardPrompt = false;
         dealStart = 0;
         lastEvent = null;
         repaint();
+    }
+
+    /**
+     * 流局：牌牆剩下的牌（服務器 roundEnd 的 wall）在牌桌中間翻開。animated 時等「流局」的大字出來一下再一張一張翻，
+     * 不然直接全部翻開。留到下一局開始才收掉。
+     */
+    void revealWall(List<Tile> tiles, boolean animated) {
+        revealTiles = List.copyOf(tiles);
+        frameNow = Browser.now();
+        revealStart = animated ? frameNow + REVEAL_DELAY_MS : frameNow - 3_600_000;
+        repaint();
+    }
+
+    /** 流局翻牌從開始到可以跳出結果要多久；count 是牌牆剩下幾張，沒有牌可翻是 0。 */
+    static int drawnRevealMs(int count) {
+        return count == 0 ? 0 : REVEAL_DELAY_MS + count * REVEAL_INTERVAL_MS + REVEAL_TILE_MS + REVEAL_HOLD_MS;
+    }
+
+    /** 流局的牌還沒翻完，還沒開始翻也算。 */
+    private boolean revealing() {
+        return !revealTiles.isEmpty() && frameNow - revealStart < revealTiles.size() * REVEAL_INTERVAL_MS + REVEAL_TILE_MS;
     }
 
     /** 專家模式：棄牌每家只畫最後一張，畫在牌河的第一格，看不出打了幾張；中央不寫剩幾張。 */
@@ -598,7 +632,7 @@ final class TableCanvas {
             listenAnimating |= listenStart[seat] != 0;
         }
         paintComponent();
-        if (!flights.isEmpty() || !banners.isEmpty() || dealing() || listenAnimating || discardPrompt) {
+        if (!flights.isEmpty() || !banners.isEmpty() || dealing() || listenAnimating || discardPrompt || revealing()) {
             requestFrame();
         }
     }
@@ -1042,6 +1076,7 @@ final class TableCanvas {
             g.translate(cx, cy);
             paintCenterText(g, tableUnit());
             paintDice(g, tableUnit());
+            paintReveal(g, tableUnit());
             for (Flight flight : flights) {
                 paintFlight(g, flight);
             }
@@ -1049,6 +1084,66 @@ final class TableCanvas {
                 paintBanner(g, banner);
             }
         }
+    }
+
+    /**
+     * 流局：牌桌中間一塊深色金框的板子，牌牆剩下的牌先蓋著排好，再照牌頭到牌尾的順序一張一張翻開，
+     * 剛翻開的那張有金框。照 Swing 版的 paintReveal 畫。原點在牌桌中心；板子太寬時縮到放得進牌桌。
+     */
+    private void paintReveal(Gfx g, double tableUnit) {
+        if (revealTiles.isEmpty()) {
+            return;
+        }
+        double ms = frameNow - revealStart;
+        if (ms < 0) {
+            return;
+        }
+        int count = revealTiles.size();
+        int columns = Math.min(REVEAL_COLUMNS, count);
+        int rows = (count + columns - 1) / columns;
+        double unit = Math.min(tableUnit, width * .94 / (columns * 37 + 24));
+        double w = 34 * unit;
+        double h = w * TILE_RATIO;
+        double gap = 3 * unit;
+        double pad = 12 * unit;
+        double titleSize = 17 * unit;
+        double titleH = titleSize * 1.33 + 5 * unit;
+        double gridW = columns * w + (columns - 1) * gap;
+        double gridH = rows * h + (rows - 1) * gap;
+        double boxW = gridW + pad * 2;
+        double boxH = gridH + titleH + pad * 2;
+        double savedAlpha = g.alpha();
+        g.alpha(savedAlpha * Math.min(1, ms / 200));
+        g.color("rgba(10,26,20,.933)");
+        g.fillRoundRect(-boxW / 2, -boxH / 2, boxW, boxH, 14 * unit);
+        g.color(Theme.GOLD);
+        g.stroke(Math.max(1.5, 2 * unit));
+        g.drawRoundRect(-boxW / 2, -boxH / 2, boxW, boxH, 14 * unit);
+        g.font(Theme.fixedFont(true, titleSize));
+        g.drawCentered("流局・牌牆剩下的 " + count + " 張", 0, -boxH / 2 + pad + titleSize * .665);
+        int latest = (int) Math.min(count - 1, Math.floor(ms / REVEAL_INTERVAL_MS));
+        boolean running = ms < count * REVEAL_INTERVAL_MS + REVEAL_TILE_MS + REVEAL_HOLD_MS / 2.0;
+        double[] base = g.transform();
+        for (int i = 0; i < count; i++) {
+            double cx = -gridW / 2 + (i % columns) * (w + gap) + w / 2;
+            double top = -boxH / 2 + pad + titleH + (i / columns) * (h + gap);
+            double t = Math.min(1, (ms - i * REVEAL_INTERVAL_MS) / REVEAL_TILE_MS);
+            // 前半蓋著往中間縮成一條線，後半翻成正面再展開
+            boolean face = t >= .5;
+            double squeeze = t <= 0 ? 1 : Math.max(.04, Math.abs(1 - 2 * t));
+            g.translate(cx, top);
+            g.scale(squeeze, 1);
+            if (face) {
+                TilePainter.paintFace(g, revealTiles.get(i), -w / 2, 0, w, h);
+                if (running && i == latest) {
+                    TilePainter.paintHighlight(g, -w / 2, 0, w, h, Theme.GOLD);
+                }
+            } else {
+                TilePainter.paintBack(g, -w / 2, 0, w, h);
+            }
+            g.setTransform(base);
+        }
+        g.alpha(savedAlpha);
     }
 
     private void paintFelt(Gfx g) {

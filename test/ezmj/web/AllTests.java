@@ -75,7 +75,7 @@ public final class AllTests {
         same(Json.write(Messages.helloName("小明")), "{\"type\":\"hello\",\"protocol\":1,\"name\":\"小明\"}");
         same(Json.write(Messages.helloToken("t")), "{\"type\":\"hello\",\"protocol\":1,\"token\":\"t\"}");
         same(Json.write(Messages.joinRoom("K7M2QX")),
-                "{\"type\":\"joinRoom\",\"code\":\"K7M2QX\",\"supports\":[\"expert\",\"substitute\"]}");
+                "{\"type\":\"joinRoom\",\"code\":\"K7M2QX\",\"supports\":[\"expert\",\"substitute\",\"listenWin\"]}");
         same(Json.write(Messages.discard(3, tile)), "{\"type\":\"discard\",\"waitId\":3,\"tile\":\"5z\"}");
         same(Json.write(Messages.declareListen(7)), "{\"type\":\"declareListen\",\"listenId\":7}");
         same(Json.write(Messages.listen(3, tile)), "{\"type\":\"listen\",\"waitId\":3,\"tile\":\"5z\"}");
