@@ -89,6 +89,14 @@ final class Gfx {
         context.setStrokeStyle(gradient);
     }
 
+    /** 之後的填色是圓心 (x, y)、半徑 radius 的放射漸層，從 from 到 to，和 Swing 的兩色 RadialGradientPaint 一樣。 */
+    void radial(double x, double y, double radius, String from, String to) {
+        CanvasGradient gradient = context.createRadialGradient(x, y, 0, x, y, radius);
+        gradient.addColorStop(0, from);
+        gradient.addColorStop(1, to);
+        context.setFillStyle(gradient);
+    }
+
     /** 以原點為圓心、半徑 radius 的圓，用放射漸層填滿，和 Swing 的 RadialGradientPaint 一樣。stops 由內往外。 */
     void fillRadial(double radius, double[] stops, String[] colors) {
         CanvasGradient gradient = context.createRadialGradient(0, 0, 0, 0, 0, radius);

@@ -83,6 +83,22 @@ final class Browser {
             + "change.catch(function (e) { console.warn('不能切換全螢幕：' + e.message); });")
     static native void toggleFullscreen();
 
+    /**
+     * 用 Tab 移到的元件標上 data-tab-focus，style.css 照它畫按鈕的金框，和 Swing 版的按鈕一樣：
+     * 滑鼠點的或程式放的焦點（例如視窗打開時的第一個按鈕）不畫。:focus-visible 在按過鍵盤之後，
+     * 程式放的焦點也會畫，所以自己記。滑鼠點按鈕照舊會拿到焦點。整頁只裝一次。
+     */
+    @JSBody(script = "var tab = false;"
+            + "document.addEventListener('keydown', function (e) { if (e.key === 'Tab') { tab = true; } }, true);"
+            + "document.addEventListener('keyup', function (e) { if (e.key === 'Tab') { tab = false; } }, true);"
+            + "document.addEventListener('mousedown', function () { tab = false; }, true);"
+            + "window.addEventListener('blur', function () { tab = false; });"
+            + "document.addEventListener('focusin', function (e) {"
+            + "  if (tab && e.target && e.target.setAttribute) { e.target.setAttribute('data-tab-focus', ''); } }, true);"
+            + "document.addEventListener('focusout', function (e) {"
+            + "  if (e.target && e.target.removeAttribute) { e.target.removeAttribute('data-tab-focus'); } }, true);")
+    static native void trackTabFocus();
+
     /** 手機版面，條件要和 style.css 一樣。 */
     @JSBody(script = "return window.matchMedia('(max-width: 900px), (max-height: 560px)').matches;")
     static native boolean isCompact();

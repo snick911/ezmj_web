@@ -47,6 +47,7 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
             repaint();
         });
         Window.current().addEventListener("resize", event -> repaint());
+        Browser.trackTabFocus();
         Browser.onVisible(() -> {
             if (controller != null) {
                 controller.wake();

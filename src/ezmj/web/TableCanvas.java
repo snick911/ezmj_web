@@ -311,6 +311,8 @@ final class TableCanvas {
     private boolean expert;
     /** 各家上次打出牌時牌河的張數。之後少了就是那張被拿走了，專家模式就不再畫它。 */
     private final int[] shownDiscards = new int[4];
+    /** 最後打出牌的人，這局還沒人打過是 -1。他牌河的最後一張有小標記，被吃碰槓胡走就不畫。 */
+    private int lastDiscarder = -1;
     /** 吃碰槓後要打牌，手牌外框亮起。 */
     private boolean discardPrompt;
     private double promptStart;
@@ -372,6 +374,7 @@ final class TableCanvas {
         banners.clear();
         Arrays.fill(listenStart, 0);
         Arrays.fill(shownDiscards, 0);
+        lastDiscarder = -1;
         revealTiles = List.of();
         discardPrompt = false;
         dealStart = 0;
@@ -407,12 +410,13 @@ final class TableCanvas {
     }
 
     /**
-     * 有沒有動畫都會收到。打出牌時記下牌河的張數，之後少了就是被拿走了，專家模式就不再畫它。
-     * 重連或接回時還沒記到，各家打出下一張才看得到。
+     * 有沒有動畫都會收到。打出牌時記下牌河的張數與是誰打的，之後少了就是被拿走了，專家模式就不再畫它，
+     * 最後打出那張的小三角也不畫。重連或接回時還沒記到，各家打出下一張才看得到。
      */
     void noteEvent(RoundEvent event) {
         if (event.type() == RoundEvent.Type.DISCARD && round != null && event.seat() >= 0) {
             shownDiscards[event.seat()] = round.player(event.seat()).discards().size();
+            lastDiscarder = event.seat();
         }
     }
 
@@ -1237,12 +1241,16 @@ final class TableCanvas {
         double x = flight.fromX() + (flight.toX() - flight.fromX()) * eased;
         double y = flight.fromY() + (flight.toY() - flight.fromY()) * eased;
         double w = (flight.fromW() + (flight.toW() - flight.fromW()) * eased) * (1 + .2 * Math.sin(Math.PI * t));
-        double h = w * DISCARD_H / DISCARD_W;
+        // 自己摸到的牌一路站著飛進手牌，比例也和手牌一樣，落地時樣子不會跳
+        boolean standing = flight.slot() == Slot.DRAWN && flight.slotSeat() == 0 && !flight.faceDown();
+        double h = w * (standing ? TILE_RATIO : DISCARD_H / DISCARD_W);
         double[] saved = g.transform();
         g.translate(x, y);
         g.rotate(flight.fromAngle() + (flight.toAngle() - flight.fromAngle()) * eased);
         if (flight.faceDown()) {
             TilePainter.paintBack(g, -w / 2, -h / 2, w, h);
+        } else if (standing) {
+            TilePainter.paintStanding(g, flight.tile(), -w / 2, -h / 2, w, h);
         } else {
             TilePainter.paintFace(g, flight.tile(), -w / 2, -h / 2, w, h);
         }
@@ -1613,32 +1621,98 @@ final class TableCanvas {
         }
     }
 
-    /** 中央方框四邊標示各家門風與姓名，輪到的一家亮起。 */
+    /**
+     * 中央方框四邊標示各家門風與姓名，輪到的一家亮起，照 Swing 版。方框跟著座位轉，字不轉：對家的是正的橫寫，
+     * 左右兩家是正的直寫、由上往下，四家都不用歪頭看。手機直向時名字後面多寫籌碼。
+     */
     private void paintSeatLabel(Gfx g, int seat, Player player, double unit) {
         double half = 100 * unit;
+        double barH = 30 * unit;
         boolean active = round.phase() != Round.Phase.FINISHED && round.current() == seat
                 && round.phase() == Round.Phase.TURN;
         g.color(active ? Theme.GOLD : "rgba(0,0,0,.353)");
-        g.fillRect(-half, half - 30 * unit, half * 2, 30 * unit);
+        g.fillRect(-half, half - barH, half * 2, barH);
 
         String wind = Tile.windName(round.seatWind(seat));
-        String dealerMark = round.dealer() == seat ? "莊 " : "";
-        String text = dealerMark + wind + "  " + player.name() + (compact ? "  " + player.chips() : "");
-        g.font(Theme.font(true, SEAT_LABEL_SIZE * unit));
-        g.color(active ? "#000000" : Theme.TEXT);
-        // 報聽的標記放在右端、轉角的方格內側，名字往左讓開
+        boolean dealer = round.dealer() == seat;
+        String chips = compact ? String.valueOf(player.chips()) : null;
+        // 報聽的標記放在該家右手邊那一端、轉角的方格內側，名字往另一邊讓開
         boolean listening = round.isListening(seat);
         double badgeRoom = listening ? 32 * unit : 0;
-        // 字體調大時，長名字要縮回方框內
-        double textWidth = g.textWidth(text);
-        double maxWidth = half * 2 - 8 * unit - badgeRoom * 2;
-        if (textWidth > maxWidth) {
-            g.font(Theme.font(true, SEAT_LABEL_SIZE * unit * maxWidth / textWidth));
+        double room = half * 2 - 8 * unit - badgeRoom * 2;
+        double[] turned = g.transform();
+        g.rotate(-seatAngle(seat));
+        Point center = toTable(seat, -badgeRoom / 2, half - barH / 2);
+        double size = SEAT_LABEL_SIZE * unit;
+        g.font(Theme.font(true, size));
+        g.color(active ? "#000000" : Theme.TEXT);
+        if (seat % 2 == 0) {
+            String text = (dealer ? "莊 " : "") + wind + "  " + player.name() + (chips != null ? "  " + chips : "");
+            // 字體調大時，長名字要縮回方框內
+            double textWidth = g.textWidth(text);
+            if (textWidth > room) {
+                g.font(Theme.font(true, size * room / textWidth));
+            }
+            g.drawCentered(text, center.x(), center.y());
+        } else {
+            List<String> groups = new ArrayList<>();
+            if (dealer) {
+                groups.add("莊");
+            }
+            groups.add(wind);
+            groups.add(player.name());
+            if (chips != null) {
+                groups.add(chips);
+            }
+            // 手機直向多寫籌碼，上下兩家的字長到轉角，直寫的就只用兩個轉角中間那一段，才不會疊在一起
+            double columnRoom = chips != null ? room - barH * 2 : room;
+            paintColumn(g, groups, center, columnRoom, size);
         }
-        g.drawCentered(text, -badgeRoom / 2, half - 15 * unit);
         if (listening) {
-            paintListenBadge(g, half - 46 * unit, half - 15 * unit, 12.5 * unit, listenProgress(seat));
+            Point badge = toTable(seat, half - 46 * unit, half - barH / 2);
+            paintListenBadge(g, badge.x(), badge.y(), 12.5 * unit, listenProgress(seat));
         }
+        g.setTransform(turned);
+    }
+
+    /**
+     * 直寫：每個字正著由上往下排，中心在 center，groups 之間多空半個字。總長超過 room 就把字縮小。
+     * 名字裡的英文字母與數字（還有手機上的籌碼）也一個一個直排，這些窄的字排得緊一點，佔一個中文字的 NARROW_STEP。
+     * size 是還沒縮放的字型大小（Theme.font 會再乘字體大小的設定）。
+     */
+    private static void paintColumn(Gfx g, List<String> groups, Point center, double room, double size) {
+        double full = g.textWidth("國");
+        // 先照原本的大小量每個字佔多高，放不下再一起縮
+        double units = .45 * (groups.size() - 1);
+        for (String group : groups) {
+            for (int i = 0; i < group.length(); i = group.offsetByCodePoints(i, 1)) {
+                units += columnStep(g, group.substring(i, group.offsetByCodePoints(i, 1)), full);
+            }
+        }
+        double fit = Math.min(1, room / (units * full * 1.02));
+        if (fit < 1) {
+            g.font(Theme.font(true, size * fit));
+        }
+        double em = full * 1.02 * fit;
+        double y = center.y() - units * em / 2;
+        for (String group : groups) {
+            for (int i = 0; i < group.length(); i = group.offsetByCodePoints(i, 1)) {
+                String ch = group.substring(i, group.offsetByCodePoints(i, 1));
+                double step = columnStep(g, ch, full * fit) * em;
+                // 每個字放在一格 step 高的方格裡，上下置中
+                g.drawCentered(ch, center.x(), y + step / 2);
+                y += step;
+            }
+            y += em * .45;
+        }
+    }
+
+    /** 直寫時窄的字（英文字母、數字）佔一個中文字的這麼多高。 */
+    private static final double NARROW_STEP = .78;
+
+    /** 這個字直寫時佔幾個中文字高：寬度不到中文字七成的算窄字。full 是目前字型一個中文字的寬。 */
+    private static double columnStep(Gfx g, String ch, double full) {
+        return g.textWidth(ch) < full * .7 ? NARROW_STEP : 1;
     }
 
     /**
@@ -1678,6 +1752,9 @@ final class TableCanvas {
         double startY = discardTop(unit);
         List<Tile> discards = player.discards();
         boolean lastHidden = flying(Slot.DISCARD, seat, -1);
+        // 整桌最後打出、還沒被拿走的那張，落進牌河後到下一張打出之前都有小標記；亮牌還在演時不畫
+        boolean latest = seat == lastDiscarder && !discards.isEmpty() && discards.size() == shownDiscards[seat]
+                && !lastHidden;
         if (expert) {
             // 只畫最後打出、還沒被拿走的那張，放在第一格
             int count = discards.size();
@@ -1687,6 +1764,9 @@ final class TableCanvas {
             TilePainter.paintFace(g, discards.get(count - 1), startX, startY, tileW - 1, tileH - 1);
             if (round.phase() == Round.Phase.CLAIMS && !round.isRobbing() && round.discarder() == seat) {
                 TilePainter.paintHighlight(g, startX, startY, tileW - 1, tileH - 1, Theme.RED);
+            }
+            if (latest) {
+                paintLatestMark(g, startX, startY, tileW - 1);
             }
             return;
         }
@@ -1702,7 +1782,41 @@ final class TableCanvas {
             if (justDiscarded) {
                 TilePainter.paintHighlight(g, x, y, tileW - 1, tileH - 1, Theme.RED);
             }
+            if (latest && i == discards.size() - 1) {
+                paintLatestMark(g, x, y, tileW - 1);
+            }
         }
+    }
+
+    /**
+     * 最後打出那張牌的標記，照 Swing 版：牌的上緣（靠牌桌中間那一邊）正中間一個朝牌指的紅色小三角，金邊、底下一點影子，
+     * 大半壓在牌上，只露出一點，才不會蓋到前一排的牌。跟著該家的方向轉，所以一律從牌桌中間指向那張牌。
+     */
+    private static void paintLatestMark(Gfx g, double x, double y, double tileW) {
+        double size = tileW * .4;
+        double cx = x + tileW / 2;
+        double[] saved = g.transform();
+        g.translate(size * .06, size * .1);
+        g.color("rgba(0,0,0,.353)");
+        markPath(g, cx, y, size);
+        g.context().fill();
+        g.setTransform(saved);
+        g.color(Theme.DEALER_RED);
+        markPath(g, cx, y, size);
+        g.context().fill();
+        g.color(Theme.GOLD);
+        g.roundStroke(Math.max(1, size * .1));
+        g.context().stroke();
+    }
+
+    /** 小三角的路徑：底邊在牌的上緣外面一點，尖端壓在牌上。 */
+    private static void markPath(Gfx g, double cx, double y, double size) {
+        CanvasRenderingContext2D path = g.context();
+        path.beginPath();
+        path.moveTo(cx - size / 2, y - size * .38);
+        path.lineTo(cx + size / 2, y - size * .38);
+        path.lineTo(cx, y + size * .5);
+        path.closePath();
     }
 
     /** 手牌列的位置。separated 是與手牌分開顯示的那張牌，沒有就傳 null。 */
@@ -1888,16 +2002,33 @@ final class TableCanvas {
                 drawY -= h * .16;
             }
         }
-        if (faceUp) {
+        if (drawY < y) {
+            // 抬起來的牌在原本的位置留一道影子，看得出是離開桌面了
+            g.color("rgba(0,0,0,.216)");
+            g.fillRoundRect(x + w * .08, y + h * .8, w * .92, h * .24, w * .3);
+        }
+        // 自己的手牌是站著的，牌頂畫在原本一張牌的範圍裡，排版不變
+        boolean standing = seat == 0 && faceUp;
+        if (standing) {
+            TilePainter.paintStanding(g, tile, x, drawY, w, h);
+        } else if (faceUp) {
             TilePainter.paintFace(g, tile, x, drawY, w, h);
         } else {
             TilePainter.paintBack(g, x, drawY, w, h);
         }
         if (masked) {
-            TilePainter.paintMask(g, x, drawY, w, h);
+            if (standing) {
+                TilePainter.paintStandingMask(g, x, drawY, w, h);
+            } else {
+                TilePainter.paintMask(g, x, drawY, w, h);
+            }
         }
         if (marked) {
-            TilePainter.paintHighlight(g, x, drawY, w, h, Theme.GOLD);
+            if (standing) {
+                TilePainter.paintStandingHighlight(g, x, drawY, w, h, Theme.GOLD);
+            } else {
+                TilePainter.paintHighlight(g, x, drawY, w, h, Theme.GOLD);
+            }
         }
     }
 

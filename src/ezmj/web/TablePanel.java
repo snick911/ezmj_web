@@ -59,6 +59,8 @@ final class TablePanel {
     private final HTMLElement root = Dom.el("div", "table-screen");
     private final TableCanvas canvas;
     private final HTMLElement hint = Dom.text("div", "hint", " ");
+    /** 動作列。有火焰的按鈕時加上 flaming，電腦版的提示移到按鈕左邊，見 style.css。 */
+    private final HTMLElement actionBar = Dom.el("div", "action-bar");
     private final HTMLElement actionButtons = Dom.el("div", "action-buttons");
     private final HTMLElement roundInfo = Dom.text("div", "round-info", " ");
     private final HTMLElement stakesInfo = Dom.text("div", "stakes-info", " ");
@@ -97,7 +99,6 @@ final class TablePanel {
         canvas = new TableCanvas(onDiscard);
         HTMLElement main = Dom.el("div", "table-main");
         main.appendChild(canvas.element());
-        HTMLElement actionBar = Dom.el("div", "action-bar");
         // 手機直向時兩顆按鈕分在動作列左右上角，橫向時一起浮在牌桌右上角
         HTMLElement corner = Dom.el("div", "corner-buttons");
         menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
@@ -531,9 +532,12 @@ final class TablePanel {
     /**
      * 吃碰槓胡這些宣告做得大又醒目，胡與自摸再閃動；過、取消這種淺色的維持原本的大小。
      * 半透明的按鈕（打牌前的聽牌）和宣告一樣大，但不閃，滑鼠移上去才不透明。
+     * 有火焰的按鈕時動作列加上 flaming，電腦版的提示移到按鈕左邊，讓上面那一行給火焰。
      */
     private void setButtons(List<ActionItem> actions) {
         Dom.clear(actionButtons);
+        boolean flaming = actions.stream().anyMatch(ActionItem::flame);
+        actionBar.setClassName(flaming ? "action-bar flaming" : "action-bar");
         for (ActionItem action : actions) {
             HTMLElement button = Dom.button(action.label(), action.color(), action.run());
             if (action.translucent()) {

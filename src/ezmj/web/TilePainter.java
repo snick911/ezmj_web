@@ -18,7 +18,13 @@ final class TilePainter {
     private static final String IVORY_SHADE = "#E6DEC6";
     private static final String IVORY_SIDE = "#CFC5A6";
     private static final String EDGE = "rgba(138,128,102,.588)";
-    private static final String SHADOW = "rgba(0,0,0,.165)";
+    /** 影子三層，越外越淡，邊緣才是軟的。 */
+    private static final String SHADOW = "rgba(0,0,0,.149)";
+    private static final String SHADOW_MID = "rgba(0,0,0,.102)";
+    private static final String SHADOW_FAR = "rgba(0,0,0,.059)";
+    /** 牌面左上那團反光。 */
+    private static final String SHEEN = "rgba(255,255,255,.294)";
+    private static final String CLEAR = "rgba(255,255,255,0)";
     private static final String GLOSS = "rgba(255,255,255,.745)";
     private static final String DIM = "rgba(0,0,0,.176)";
     private static final double DEPTH = .13;
@@ -109,8 +115,8 @@ final class TilePainter {
         g.fillRoundRect(b.x + b.dx * shift, b.y + b.dy * shift, b.w, b.h, b.arc);
     }
 
-    /** 畫好的牌，tile 為 null 表示牌背。尺寸是實際像素，quarter 是轉了幾個 90 度。 */
-    private record CacheKey(Tile tile, int w, int h, int quarter) {
+    /** 畫好的牌，tile 為 null 表示牌背。尺寸是實際像素，quarter 是轉了幾個 90 度，standing 是站著的手牌。 */
+    private record CacheKey(Tile tile, int w, int h, int quarter, boolean standing) {
     }
 
     /** 同一種牌只畫一次，之後直接貼圖，整桌重畫才快得起來。 */
@@ -127,19 +133,64 @@ final class TilePainter {
     }
 
     static void paintFace(Gfx g, Tile tile, double x, double y, double w, double h) {
-        paintTile(g, tile, x, y, w, h);
+        paintTile(g, tile, x, y, w, h, false);
     }
 
     static void paintBack(Gfx g, double x, double y, double w, double h) {
-        paintTile(g, null, x, y, w, h);
+        paintTile(g, null, x, y, w, h, false);
+    }
+
+    /**
+     * 自己面前站著的手牌，照 Swing 版：躺著的牌露在下緣的厚度，站著時改成牌面上面的一道牌頂，
+     * 靠牌面的一半是象牙色、後面一半是綠色的牌背，像從斜上方看著立起來的牌。整張還是畫在 (x, y, w, h) 裡面，
+     * 和躺著的牌一樣大，排版不用另外留地方。
+     */
+    static void paintStanding(Gfx g, Tile tile, double x, double y, double w, double h) {
+        paintTile(g, tile, x, y, w, h, true);
+    }
+
+    /** 站著的牌的遮罩，和 paintMask 一樣連厚度一起蓋住，形狀照站著的牌。 */
+    static void paintStandingMask(Gfx g, double x, double y, double w, double h) {
+        Body whole = standingWhole(x, y, w, h);
+        g.color(MASK);
+        g.context().beginPath();
+        g.roundRectPath(whole.x, whole.y, whole.w, whole.h, whole.arc);
+        g.roundRectPath(whole.x + whole.dx, whole.y + whole.dy, whole.w, whole.h, whole.arc);
+        g.context().fill();
+    }
+
+    /** 站著的牌的外框，和 paintHighlight 一樣框住牌面。 */
+    static void paintStandingHighlight(Gfx g, double x, double y, double w, double h, String color) {
+        Body face = standingFace(x, y, w, h);
+        g.color(color);
+        g.stroke(Math.max(2, w * .07));
+        g.drawRoundRect(face.x, face.y, face.w, face.h, face.arc);
+    }
+
+    /** 站著的牌頂有多高，是厚度的這個倍數。 */
+    private static final double LID = 1.15;
+
+    /** 站著的牌整張的外形：牌頂加牌面，右邊照樣露一點厚度，下緣只留一條細邊。 */
+    private static Body standingWhole(double x, double y, double w, double h) {
+        double depth = Math.min(w, h) * DEPTH;
+        double side = depth * .3;
+        double base = depth * .25;
+        return new Body(x, y, w - side, h - base, side, base, (w - side) * .2);
+    }
+
+    /** 站著的牌的牌面：整張扣掉上面的牌頂。 */
+    private static Body standingFace(double x, double y, double w, double h) {
+        Body whole = standingWhole(x, y, w, h);
+        double lid = Math.min(w, h) * DEPTH * LID;
+        return new Body(whole.x, whole.y + lid, whole.w, whole.h - lid, whole.dx, whole.dy, whole.arc);
     }
 
     /** 轉正或轉 90 度的牌走快取；飛行中轉到一半的牌角度太多種，就直接畫。 */
-    private static void paintTile(Gfx g, Tile tile, double x, double y, double w, double h) {
+    private static void paintTile(Gfx g, Tile tile, double x, double y, double w, double h, boolean standing) {
         double[] t = g.transform();
         int quarter = quarterTurns(t);
         if (quarter < 0) {
-            drawTile(g, tile, x, y, w, h);
+            drawTile(g, tile, x, y, w, h, standing);
             return;
         }
         double x0 = t[0] * x + t[2] * y + t[4];
@@ -148,7 +199,8 @@ final class TilePainter {
         double y1 = t[1] * (x + w) + t[3] * (y + h) + t[5];
         double boxX = Math.min(x0, x1);
         double boxY = Math.min(y0, y1);
-        CacheKey key = new CacheKey(tile, (int) Math.round(Math.abs(x1 - x0)), (int) Math.round(Math.abs(y1 - y0)), quarter);
+        CacheKey key = new CacheKey(tile, (int) Math.round(Math.abs(x1 - x0)), (int) Math.round(Math.abs(y1 - y0)), quarter,
+                standing);
         int margin = margin(key);
         HTMLCanvasElement image = CACHE.get(key);
         if (image == null) {
@@ -157,7 +209,7 @@ final class TilePainter {
             image.setHeight(key.h() + margin * 2);
             Gfx painter = new Gfx((CanvasRenderingContext2D) image.getContext("2d"), 1);
             painter.setTransform(new double[] {t[0], t[1], t[2], t[3], t[4] + margin - boxX, t[5] + margin - boxY});
-            drawTile(painter, tile, x, y, w, h);
+            drawTile(painter, tile, x, y, w, h, standing);
             CACHE.put(key, image);
         }
         g.context().setTransform(1, 0, 0, 1, 0, 0);
@@ -165,9 +217,9 @@ final class TilePainter {
         g.setTransform(t);
     }
 
-    /** 陰影會超出牌的範圍，圖要多留這麼多像素。 */
+    /** 陰影會超出牌的範圍，圖要多留這麼多像素；最外層的影子錯開厚度的 2.2 倍。 */
     private static int margin(CacheKey key) {
-        return (int) (Math.max(key.w(), key.h()) * .2) + 3;
+        return (int) (Math.max(key.w(), key.h()) * .32) + 3;
     }
 
     /** 轉了幾個 90 度；不是剛好的直角時回傳 -1。 */
@@ -180,17 +232,27 @@ final class TilePainter {
         return Math.floorMod((int) Math.round(Math.atan2(t[1], t[0]) / (Math.PI / 2)), 4);
     }
 
-    private static void drawTile(Gfx g, Tile tile, double x, double y, double w, double h) {
+    private static void drawTile(Gfx g, Tile tile, double x, double y, double w, double h, boolean standing) {
         if (tile == null) {
             paintBody(g, body(g, x, y, w, h), BACK, BACK_DARK, BACK_DARK, IVORY_SHADE);
         } else {
-            drawFace(g, tile, x, y, w, h);
+            drawFace(g, tile, x, y, w, h, standing);
         }
     }
 
-    private static void drawFace(Gfx g, Tile tile, double x, double y, double w, double h) {
-        Body b = body(g, x, y, w, h);
-        paintBody(g, b, IVORY, IVORY_SHADE, IVORY_SIDE, BACK_DARK);
+    private static void drawFace(Gfx g, Tile tile, double x, double y, double w, double h, boolean standing) {
+        Body b;
+        if (standing) {
+            // 整張立起來的牌（牌頂加牌面）一起投影子、露厚度，再畫牌頂，牌面蓋在最上面
+            Body whole = standingWhole(x, y, w, h);
+            b = standingFace(x, y, w, h);
+            paintSides(g, whole, BACK_DARK, IVORY_SIDE);
+            paintLid(g, whole, b);
+            paintTop(g, b, IVORY, IVORY_SHADE);
+        } else {
+            b = body(g, x, y, w, h);
+            paintBody(g, b, IVORY, IVORY_SHADE, IVORY_SIDE, BACK_DARK);
+        }
         double px = b.x + b.w * .1;
         double py = b.y + b.h * .08;
         double pw = b.w * .8;
@@ -233,16 +295,41 @@ final class TilePainter {
 
     /** 由下往上疊：陰影、底層、側面，最後是有光影的牌面與邊緣高光。 */
     private static void paintBody(Gfx g, Body b, String top, String bottom, String side, String base) {
-        g.color(SHADOW);
-        fillShape(g, b, 1.7);
-        fillShape(g, b, 1.35);
-        g.color(base);
-        fillShape(g, b, 1);
-        fillShape(g, b, .75);
-        g.color(side);
-        fillShape(g, b, .5);
-        fillShape(g, b, .25);
+        paintSides(g, b, base, side);
+        paintTop(g, b, top, bottom);
+    }
 
+    /**
+     * 影子與厚度，照 Swing 版。影子是三層越外越淡的，邊緣才是軟的；厚度是一層一層錯開的同一個形狀，
+     * 一個像素以內就疊一層，放大了也是連續的斜面。後半是 base（牌面那張是綠色的牌背），前半是 side，越後面越暗。
+     */
+    private static void paintSides(Gfx g, Body b, String base, String side) {
+        g.color(SHADOW_FAR);
+        fillShape(g, b, 2.2);
+        g.color(SHADOW_MID);
+        fillShape(g, b, 1.75);
+        g.color(SHADOW);
+        fillShape(g, b, 1.35);
+        double[] t = g.transform();
+        double pixels = Math.hypot(b.dx, b.dy) * Math.hypot(t[0], t[1]);
+        int steps = Math.max(4, Math.min(28, (int) Math.ceil(pixels * 1.5)));
+        for (int i = steps; i >= 1; i--) {
+            double s = (double) i / steps;
+            g.color(s > .5 ? toBlack(base, (s - .5) * .5) : toBlack(side, s * .2));
+            fillShape(g, b, s);
+        }
+    }
+
+    /** "#RRGGBB" 往黑色調 amount（0 到 1），寫成 rgb()，和 Swing 版的 Theme.mix(color, BLACK, amount) 一樣。 */
+    private static String toBlack(String hex, double amount) {
+        int rgb = Integer.parseInt(hex.substring(1), 16);
+        double keep = 1 - amount;
+        return "rgb(" + Math.round((rgb >> 16 & 255) * keep) + "," + Math.round((rgb >> 8 & 255) * keep) + ","
+                + Math.round((rgb & 255) * keep) + ")";
+    }
+
+    /** 牌面：從光那一邊亮到另一邊暗，左上再一團淡淡的反光，看起來是微微鼓起來的；邊上一圈高光與細的外框。 */
+    private static void paintTop(Gfx g, Body b, String top, String bottom) {
         double reach = Math.max(b.w, b.h) * .6;
         double[] light = fromScreen(g, -.64 * reach, -.77 * reach);
         double centerX = b.x + b.w / 2;
@@ -253,6 +340,8 @@ final class TilePainter {
         double darkY = centerY - light[1];
         g.gradient(lightX, lightY, top, darkX, darkY, bottom);
         fillShape(g, b, 0);
+        g.radial(centerX + light[0] * .55, centerY + light[1] * .55, reach * 1.1, SHEEN, CLEAR);
+        fillShape(g, b, 0);
 
         double stroke = Math.max(1, b.w * .035);
         double inset = stroke / 2;
@@ -262,6 +351,36 @@ final class TilePainter {
         g.color(EDGE);
         g.stroke(.8);
         g.drawRoundRect(b.x, b.y, b.w, b.h, b.arc);
+    }
+
+    /**
+     * 站著的牌露出來的牌頂，在牌面上面：靠近牌面的一半是象牙色，後面一半是綠色的牌背，中間一道細線分開，
+     * 最上緣一道亮邊。whole 是整張立起來的牌，face 是牌面。照 Swing 版的 paintLid。
+     */
+    private static void paintLid(Gfx g, Body whole, Body face) {
+        CanvasRenderingContext2D context = g.context();
+        // 牌頂到牌面圓角的一半，下面被牌面蓋住
+        double bottom = face.y + face.arc / 2;
+        double split = whole.y + (face.y - whole.y) * .55;
+        double line = Math.max(.6, face.w * .02);
+        context.save();
+        context.beginPath();
+        g.roundRectPath(whole.x, whole.y, whole.w, whole.h, whole.arc);
+        context.clip();
+        context.beginPath();
+        context.rect(whole.x - 1, whole.y - 1, whole.w + 2, bottom - whole.y + 1);
+        context.clip();
+        g.gradient(0, whole.y, BACK, 0, split, BACK_DARK);
+        g.fillRect(whole.x - 1, whole.y - 1, whole.w + 2, bottom - whole.y + 1);
+        g.gradient(0, split, IVORY_SIDE, 0, face.y, IVORY_SHADE);
+        g.fillRect(whole.x - 1, split, whole.w + 2, bottom - split);
+        g.color("rgba(0,0,0,.216)");
+        g.stroke(line);
+        g.drawLine(whole.x + whole.arc * .3, split, whole.x + whole.w - whole.arc * .3, split);
+        g.color("rgba(255,255,255,.275)");
+        g.stroke(line * 1.6);
+        g.drawRoundRect(whole.x, whole.y, whole.w, whole.h, whole.arc);
+        context.restore();
     }
 
     private static void paintWan(Gfx g, Tile tile, double x, double y, double w, double h) {

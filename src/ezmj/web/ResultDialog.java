@@ -31,7 +31,8 @@ final class ResultDialog extends Dialog {
         card.appendChild(Dom.text("h2", "headline", headline(round, result)));
 
         if (result.isDrawnGame()) {
-            card.appendChild(drawnTable(game).element());
+            // 流局沒有輸贏，不再列一張四家籌碼都一樣的表
+            card.appendChild(Dom.text("div", "drawn-note", "這局沒有輸贏，各家籌碼不變"));
         } else {
             card.appendChild(handStrip(round.player(result.winner()), result.winTile(), 36, 50, 9));
             HTMLElement tables = Dom.el("div", "result-tables");
@@ -102,7 +103,8 @@ final class ResultDialog extends Dialog {
             }
             Player player = round.player(seat);
             String mark = !result.isDrawnGame() && !result.isSelfDraw() && seat == result.from() ? "（放槍）" : "";
-            hands.appendChild(Dom.text("div", seat == 0 ? "bold" : "", player.name() + mark));
+            // 自己的名字是金色粗體，和牌桌右側的計分表一樣
+            hands.appendChild(Dom.text("div", seat == 0 ? "bold gold" : "", player.name() + mark));
             hands.appendChild(handStrip(player, null, 24, 33, 6));
         }
         return hands;
@@ -168,16 +170,9 @@ final class ResultDialog extends Dialog {
                     player.name() + (seat == round.dealer() ? "（莊）" : ""), outcome(round.result(), seat),
                     tai, money(delta), String.valueOf(player.chips()));
             Dom.color(cells[3], moneyColor(delta));
-        }
-        return table;
-    }
-
-    private static GridTable drawnTable(GameView game) {
-        GridTable table = new GridTable(1);
-        table.header("玩家", "籌碼");
-        for (int seat = 0; seat < 4; seat++) {
-            Player player = game.player(seat);
-            table.row(seat == 0, player.name(), String.valueOf(player.chips()));
+            if (seat == 0) {
+                Dom.color(cells[0], Theme.GOLD);
+            }
         }
         return table;
     }

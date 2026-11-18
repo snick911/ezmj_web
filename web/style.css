@@ -45,18 +45,48 @@ body {
 
 h1, h2, h3, p { margin: 0; }
 
+/*
+ * 色塊按鈕，照 Swing 版的 Theme.button：圓角，上面亮一點、下面暗一點，頂端一道細亮線；滑鼠移上去變亮，
+ * 按下變深、字往下沉一點，不能按時底色淡掉。底色寫在元素上（Dom.button），這裡的漸層疊在上面。
+ * 留白寫在 --pad-y 與 --pad-x，按下時 --sink 把上面多留 1 像素、下面少 1 像素，字就往下沉，按鈕本身不動。
+ * 用 Tab 移過來的才有金框（Browser.trackTabFocus 標上 data-tab-focus），滑鼠點的或程式放的焦點不畫。
+ */
 .btn {
+  --btn-tint: transparent;
+  --btn-shade: linear-gradient(rgba(255, 255, 255, .09), rgba(0, 0, 0, .1));
+  --btn-line: inset 0 1px 0 rgba(255, 255, 255, .176);
+  --pad-y: .5rem;
+  --pad-x: 1.1rem;
+  --sink: 0px;
+  background-image: linear-gradient(var(--btn-tint), var(--btn-tint)), var(--btn-shade);
   border: 0;
-  border-radius: 4px;
+  border-radius: .3125rem;
+  box-shadow: var(--btn-line);
   color: #fff;
   cursor: pointer;
   font: inherit;
   font-weight: bold;
-  padding: .5rem 1.1rem;
+  padding: calc(var(--pad-y) + var(--sink)) var(--pad-x) calc(var(--pad-y) - var(--sink));
 }
-.btn:hover:not(:disabled) { filter: brightness(1.18); }
-.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-.btn:disabled { cursor: default; opacity: .45; }
+.btn:hover:not(:disabled) {
+  --btn-tint: rgba(255, 255, 255, .14);
+  --btn-line: inset 0 1px 0 rgba(255, 255, 255, .275);
+}
+/* 按下時亮線換成上緣一道陰影，看起來是壓下去 */
+.btn:active:not(:disabled) {
+  --btn-tint: rgba(0, 0, 0, .22);
+  --btn-shade: linear-gradient(transparent, rgba(0, 0, 0, .02));
+  --btn-line: inset 0 2px 0 rgba(0, 0, 0, .275);
+  --sink: 1px;
+}
+.btn:focus { outline: none; }
+.btn[data-tab-focus] { outline: 2px solid var(--gold); outline-offset: 1px; }
+.btn:disabled {
+  --btn-tint: rgba(18, 38, 32, .55);
+  box-shadow: none;
+  color: rgba(255, 255, 255, .55);
+  cursor: default;
+}
 
 .card {
   background: var(--panel);
@@ -145,7 +175,7 @@ h1, h2, h3, p { margin: 0; }
 .name-row { flex: 1 1 18rem; justify-content: flex-start; }
 .name-row .field { flex: 1 1 9.5rem; max-width: 14rem; }
 .start-buttons { display: flex; flex: 1 1 18rem; gap: .6rem; }
-.start-buttons .btn { flex: 1; font-size: 1.06rem; padding: .6rem 1rem; white-space: nowrap; }
+.start-buttons .btn { --pad-y: .6rem; --pad-x: 1rem; flex: 1; font-size: 1.06rem; white-space: nowrap; }
 /* 用房號加入：標題、房號、加入房間緊挨著排，按鈕就在房號旁邊 */
 .join-row { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem .6rem; }
 .join-code { align-items: center; display: flex; flex: 0 1 auto; gap: .75rem; }
@@ -185,7 +215,7 @@ h1, h2, h3, p { margin: 0; }
 .link { color: var(--gold); overflow-wrap: anywhere; }
 /* 按鈕的字不換行；放不下時整顆換到下一排，字體調大也一樣 */
 .side-row { display: flex; flex-wrap: wrap; gap: .5rem; }
-.side-row .btn { flex: 1; padding-left: .5rem; padding-right: .5rem; white-space: nowrap; }
+.side-row .btn { --pad-x: .5rem; flex: 1; white-space: nowrap; }
 .room-card { width: min(36rem, 100%); }
 .room-heading { align-items: center; display: flex; gap: 1.5rem; justify-content: space-between; }
 .room-name { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; min-width: 0; }
@@ -216,7 +246,7 @@ h1, h2, h3, p { margin: 0; }
 
 /* 大廳的房間列表：用掉卡片剩下的高度，房間多了自己捲動，畫面不會跟著跳 */
 .list-heading, .list-footer { align-items: center; display: flex; gap: .75rem; justify-content: space-between; }
-.list-heading .btn, .list-footer .btn { flex: 0 0 auto; padding: .3rem .9rem; }
+.list-heading .btn, .list-footer .btn { --pad-y: .3rem; --pad-x: .9rem; flex: 0 0 auto; }
 .room-list { background: var(--panel-light); flex: 1 1 16rem; min-height: 10rem; overflow: auto; }
 .room-list .grid { width: 100%; }
 .room-list th { background: var(--panel); padding: .45rem .7rem; position: sticky; top: 0; }
@@ -308,51 +338,97 @@ h1, h2, h3, p { margin: 0; }
 .menu-button, .menu-close, .drawer-shade, .fullscreen-button { display: none; }
 /* 選單與全螢幕的外框只有手機橫向時才排版，其他時候兩顆按鈕照原本的位置放 */
 .corner-buttons { display: contents; }
+/*
+ * 動作列：上面一行提示、下面一排按鈕，都置中。按鈕放在三欄的中間那欄，兩邊等寬，
+ * 有火焰的胡與自摸時提示可以移到左邊那欄（見下面的 .flaming），按鈕的位置不變。
+ */
 .action-bar {
+  align-content: start;
   background: var(--panel);
-  display: flex;
+  display: grid;
   flex: 0 0 auto;
-  flex-direction: column;
-  gap: .375rem;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   /* 放得下一行提示加一排吃碰槓胡，按鈕出現時牌桌不會跟著縮 */
   min-height: 6.25rem;
   padding: .5rem .5rem .6rem;
+  row-gap: .375rem;
 }
-.hint { color: var(--muted); font-size: .94rem; min-height: 1.3em; text-align: center; }
-.action-buttons { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
+.hint { color: var(--muted); font-size: .94rem; grid-column: 1 / -1; grid-row: 1; min-height: 1.3em; text-align: center; }
+.action-buttons {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  grid-column: 2;
+  grid-row: 2;
+  justify-content: center;
+}
+/*
+ * 電腦版有火焰的胡與自摸時（TablePanel 加上 .flaming），上面那一行讓給往上竄的火焰，提示改放在按鈕左邊、
+ * 靠右對齊，太長就折行，照 Swing 版。上面那一行照樣留一行提示的高度，按鈕的位置和沒有火焰時一樣。
+ * 手機的動作列窄，提示照舊在上面。
+ */
+@media (width > 900px) and (height > 560px) {
+  /* 上面那一行放一個看不見的空白，字型與最小高度和提示一樣，一行提示多高它就多高 */
+  .action-bar.flaming::before {
+    content: "\00a0";
+    font-size: .94rem;
+    grid-column: 1 / -1;
+    grid-row: 1;
+    min-height: 1.3em;
+  }
+  /* 提示本身零高度、字對著按鈕那一排的中線往上下長，字體調大折成好幾行也不會把動作列撐高 */
+  .action-bar.flaming .hint {
+    align-items: center;
+    align-self: center;
+    display: flex;
+    grid-column: 1;
+    grid-row: 2;
+    height: 0;
+    justify-content: flex-end;
+    margin-right: .75rem;
+    min-height: 0;
+    text-align: right;
+  }
+}
 /* 吃碰槓胡：比一般按鈕大很多，金框加光暈，一眼就看得到、手指也好按；胡與自摸再閃動 */
 .claim-button {
+  --pad-y: .55rem;
+  --pad-x: 1.8rem;
   border: 2px solid var(--gold);
-  box-shadow: 0 0 .7rem rgba(232, 192, 90, .55);
+  box-shadow: var(--btn-line), 0 0 .7rem rgba(232, 192, 90, .55);
   font-size: 1.8rem;
   line-height: 1.2;
   min-width: 7rem;
-  padding: .55rem 1.8rem;
 }
-/* 打牌前的聽牌：可以用、但不一定要按，平常半透明不閃，滑鼠移上去或按著才不透明 */
-.translucent-button { box-shadow: none; opacity: .5; transition: opacity .15s; }
-.translucent-button:hover, .translucent-button:active, .translucent-button:focus-visible { opacity: 1; }
+/* 打牌前的聽牌：可以用、但不一定要按，平常連字一起 50%、不閃，滑鼠移上去、按著或用 Tab 移過來才不透明 */
+.translucent-button { box-shadow: var(--btn-line); opacity: .5; transition: opacity .15s; }
+.translucent-button:hover, .translucent-button:active, .translucent-button[data-tab-focus] { opacity: 1; }
 .win-button { animation: win-pulse 1s ease-in-out infinite; }
 @keyframes win-pulse {
-  50% { box-shadow: 0 0 1.4rem rgba(255, 220, 120, .95); transform: scale(1.06); }
+  50% { box-shadow: var(--btn-line), 0 0 1.4rem rgba(255, 220, 120, .95); transform: scale(1.06); }
 }
 @media (prefers-reduced-motion: reduce) {
   .win-button { animation: none; }
 }
-/* 胡與自摸外面的一圈火焰（FlameFrame）：畫布比按鈕大出去，畫在按鈕後面、不擋點擊。
-   外框不佔比按鈕多的位置，動作列不會因為火焰變高；火焰往上伸到提示後面，所以提示疊在上面 */
-.flame-frame { display: inline-flex; position: relative; }
+/*
+ * 胡與自摸的火焰（FlameFrame）：按鈕後面一張畫布畫光暈與火舌，前面一張畫發亮的橘邊與火星，都不擋點擊。
+ * 畫布比按鈕大出去的部分（上 2.6、兩側 2.6、下 1 rem，和 FlameFrame 一樣）不佔位置，動作列不會因為火焰變高；
+ * 火焰往上竄到提示那一行。左右各留 1.125 rem 給兩側的火舌，旁邊的按鈕才不會被蓋住。
+ */
+.flame-frame { display: inline-flex; margin: 0 1.125rem; position: relative; }
 .flame-frame .btn { position: relative; z-index: 1; }
 .flame-canvas {
-  height: calc(100% + 1.85rem);
-  left: -1.2rem;
+  height: calc(100% + 3.6rem);
+  left: -2.6rem;
   pointer-events: none;
   position: absolute;
-  top: -1.5rem;
-  width: calc(100% + 2.4rem);
+  top: -2.6rem;
+  width: calc(100% + 5.2rem);
   z-index: 0;
 }
-.hint { position: relative; z-index: 2; }
+.flame-canvas.front { z-index: 2; }
+.hint { position: relative; z-index: 3; }
 .sidebar {
   background: var(--panel);
   display: flex;
@@ -382,10 +458,11 @@ h1, h2, h3, p { margin: 0; }
   align-items: center;
   display: inline-flex;
   flex: 0 0 auto;
+  --pad-y: 0px;
+  --pad-x: 0px;
   height: 1.6rem;
   justify-content: center;
   margin-left: auto;
-  padding: 0;
   width: 1.9rem;
 }
 /* 收合按鈕的箭頭：V 字朝下是展開，朝上是收合，和 Swing 版一樣 */
@@ -416,7 +493,7 @@ h1, h2, h3, p { margin: 0; }
 .chat-notice { color: var(--muted); font-size: .75rem; min-height: 1.2em; }
 .chat-input { display: flex; gap: .4rem; }
 .chat-field { flex: 1; min-width: 0; width: auto; }
-.chat-input .btn { flex: 0 0 auto; padding: .25rem .7rem; }
+.chat-input .btn { --pad-y: .25rem; --pad-x: .7rem; flex: 0 0 auto; }
 /* 手機的選單收著時有新的聊天，選單右上角亮一個紅點 */
 .menu-button.unread::after {
   background: #E5483D;
@@ -553,6 +630,8 @@ h1, h2, h3, p { margin: 0; }
 
 /* 結果視窗 */
 .result-card { width: fit-content; }
+/* 流局沒有輸贏，只寫一行，照 Swing 版 16 點的灰字 */
+.drawn-note { color: var(--muted); font-size: 1rem; }
 .result-tables { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 1.25rem 2.25rem; }
 /* 牌型台數那一張至少這麼寬，牌型的名字和台數之間才不會擠在一起，和 Swing 版一樣是 300 */
 .result-tables .grid:first-child { min-width: 18.75rem; }
@@ -611,7 +690,7 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
 @media (max-width: 900px), (max-height: 560px) {
   :root { font-size: calc(14px * var(--font-scale)); }
 
-  .btn { min-height: 2.7rem; padding: .35rem .8rem; }
+  .btn { --pad-y: .35rem; --pad-x: .8rem; min-height: 2.7rem; }
   .card {
     gap: .5rem;
     max-height: calc(100vh - 1rem);
@@ -662,7 +741,7 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   .fullscreen-button { left: .4rem; position: absolute; top: .3rem; }
   .hint { min-height: 2.7rem; padding: 0 4.6rem; }
   .action-buttons { gap: .4rem; }
-  .claim-button { font-size: 1.65rem; min-width: 5.6rem; padding: .45rem 1.2rem; }
+  .claim-button { --pad-y: .45rem; --pad-x: 1.2rem; font-size: 1.65rem; min-width: 5.6rem; }
 
   /* 視窗 */
   .floating { left: .5rem; right: .5rem; top: .5rem; transform: none; }
@@ -716,11 +795,12 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   .corner-buttons { display: flex; gap: .35rem; position: absolute; right: .4rem; top: .3rem; }
   /* relative 讓新聊天的紅點有地方對齊 */
   .menu-button, .fullscreen-button {
+    --pad-y: .2rem;
+    --pad-x: .65rem;
     font-size: .8rem;
     inset: auto;
     min-height: 2.2rem;
     opacity: .92;
-    padding: .2rem .65rem;
     pointer-events: auto;
     position: relative;
   }
@@ -751,5 +831,5 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
     width: var(--act-width);
   }
   .action-buttons .btn { flex: 0 0 auto; pointer-events: auto; }
-  .claim-button { font-size: 1.5rem; min-width: 3.6rem; padding: .35rem .85rem; }
+  .claim-button { --pad-y: .35rem; --pad-x: .85rem; font-size: 1.5rem; min-width: 3.6rem; }
 }
