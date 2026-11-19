@@ -102,7 +102,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 - **聊天**：連線的牌桌都有，跟電腦打的一人房間也有，走牌局同一條連線的 `chat`。「紀錄」一律預設收起來，空出來的地方給聊天，收合按鈕是 CSS 畫的箭頭。服務器不補送斷線期間的訊息。說太快、太長或舊服務器不能聊天，顯示在聊天區，牌桌上自己那一側也跳一下。有不雅字眼的不送出，字留在輸入框；收到別人的由 `OnlineGame.parseChat` 把不雅字眼換成＊。`ezmjService` 0.9.0 起服務器也擋，回 `badChat`。
   - 牌桌上的泡泡蓋在畫布上，位置由 `TableCanvas.syncChatAnchors` 寫在 CSS 變數 `--chat-x0` 到 `--chat-y3`，和 `--hint-*` 一樣用 `style.setProperty`。
   - 在牌桌上按 Enter 跳出輸入框。按鍵聽整頁的，牌桌換掉之後第一次按鍵時拿掉；游標在輸入框、按鈕或連結上、有 `.backdrop` 或 `.waiting` 蓋著，或輸入法還在選字時不搶。
-- **擲骰子與牌牆**：照 Swing 版，規則與時間見 `ezmj` README 的「擲骰子與牌牆」。服務器沒有送骰子，用 `OnlineGame.dice` 從房號、莊家、圈風、局風與連莊數算，和同桌的 Swing 版一樣；`AllTests` 比對一組固定的點數，算法改了兩邊要一起改。骰子加發牌約 2.4 秒，要在 `roundStart` 的 `dealMs`（3 秒）之內。
+- **擲骰子與牌牆**：照 Swing 版，規則與時間見 `ezmj` README 的「擲骰子與牌牆」。牌牆在服務器上照真的牌桌疊好、擲骰子開門，服務器在 `roundStart` 與 `state` 送 `dice`，`OnlineGame.dice` 用它，畫面上的開門處就是服務器真的拿牌的地方，和同桌的 Swing 版一樣。0.12.0 和更早的服務器沒有送，才從房號、莊家、圈風、局風與連莊數算；`AllTests` 兩種都比對，算法改了要和 `ezmj` 的 `OnlineTest` 一起改。骰子加發牌約 2.4 秒，要在 `roundStart` 的 `dealMs`（3 秒）之內。
 - **聽牌**（程式與協定叫報聽，畫面上一律寫「聽牌」，紀錄裡 `OnlineGame.describe` 的「報聽」也換掉）：照 Swing 版的單機牌局。
   - 跟電腦打與多人的房間都在打牌之前聽牌：`askTurn` 的 `readyDiscards` 有東西時，動作列多一個半透明的「聽牌」（平常 50% 不透明，滑鼠移上去才不透明，不閃）。按了打出去會聽牌的牌加上金框、其他蓋起來，提示列出打哪張聽哪些牌；點一張就送 `listen`（打出並報聽），「取消」回到一般打牌。沒按就打出去的，服務器照樣送 `canListen`，網頁不理。
   - 專家模式打完牌才問：服務器不給 `readyDiscards`，打出牌後送 `canListen` 才出現「聽牌」按鈕，按了送 `declareListen`。這個機會一直到下一次摸牌、吃碰槓或這局結束，所以別家可能在你出牌時聽牌；服務器聽牌後只補送一份 `state`、不會再問一次，`OnlineController.stillAsked` 讓這種局面不收掉自己的等待。

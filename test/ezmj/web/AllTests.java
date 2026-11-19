@@ -352,6 +352,11 @@ public final class AllTests {
                 "{\"type\":\"roundStart\",\"number\":7,\"dealer\":0,\"roundWind\":1,\"streak\":1,\"dealMs\":3000}"));
         check(game.dice().equals(new Dice(1, 3, 1)), "骰子應該是 1、3、1，實際是 " + game.dice());
         same(WallRing.announce(game, game.dice()), "小明 擲出 1、3、1，共 5 點，從小明的牌牆開門");
+        // 新的服務器送它真的拿來開門的骰子，就照它畫；Swing 版也一樣
+        game.applyRoundStart((Map<String, Object>) Json.parse("{\"type\":\"roundStart\",\"number\":8,\"dealer\":0,"
+                + "\"roundWind\":1,\"streak\":2,\"dice\":[4,5,2],\"dealMs\":3000}"));
+        check(game.dice().equals(new Dice(4, 5, 2)), "骰子應該是服務器的 4、5、2，實際是 " + game.dice());
+        same(WallRing.announce(game, game.dice()), "小明 擲出 4、5、2，共 11 點，從小花的牌牆開門");
     }
 
     /** 閱讀器靠 xref 找物件，位移錯一個位元組就打不開或要修復。 */

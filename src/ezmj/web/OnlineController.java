@@ -720,8 +720,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         int serial = roundSerial;
         // 有動畫時先讓胡牌的大字演完，再跳出結果；大胡演得比較久。台數在上面的 applyRoundEnd 就有了
         int endMs = settings.animation ? TableCanvas.endBannerMs(game.result()) : 0;
-        // 流局：牌牆剩下的牌（ezmjService 0.12.0 起的 wall）在牌桌中間一張一張翻開，翻完才跳出結果
-        List<Tile> wall = wallOf(message);
+        // 流局：牌牆剩下的牌（ezmjService 0.12.0 起的 wall，applyRoundEnd 收下了）在牌桌中間一張一張翻開，翻完才跳出結果
+        List<Tile> wall = game.remainingWall();
         if (game.result().isDrawnGame() && !wall.isEmpty()) {
             view.revealWall(wall, settings.animation);
             if (settings.animation) {
@@ -731,19 +731,6 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         }
         int bannerMs = endMs;
         Browser.after(bannerMs, () -> showResult(end, serial, bannerMs));
-    }
-
-    /** roundEnd 的 wall：流局時牌牆剩下的牌，牌頭到牌尾。舊服務器沒有、有人胡的局是 null，都當作沒有。 */
-    private static List<Tile> wallOf(Map<String, Object> message) {
-        Object wall = message.get("wall");
-        if (!(wall instanceof List)) {
-            return List.of();
-        }
-        StringBuilder codes = new StringBuilder();
-        for (Object code : (List<?>) wall) {
-            codes.append(code);
-        }
-        return Tile.parseAll(codes.toString());
     }
 
     /**
