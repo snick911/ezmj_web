@@ -43,15 +43,32 @@ final class BackgroundMusic {
     /** 每次換曲加一，還在算的舊曲子就知道不用算了。 */
     private static int serial;
     private static int volume = 100;
+    /** 正在播玩家的語音，音樂壓低到 DUCK 倍，見 VoicePlayer。 */
+    private static boolean ducked;
+    private static final float DUCK = .3f;
 
     private BackgroundMusic() {
     }
 
     static void setVolume(int percent) {
         volume = percent;
+        applyVolume();
+    }
+
+    /** 播玩家的語音時把音樂壓低，播完再回來。 */
+    static void duck(boolean on) {
+        ducked = on;
+        applyVolume();
+    }
+
+    private static void applyVolume() {
         if (output != null) {
-            output.getGain().setValue(AudioOut.gain(percent));
+            output.getGain().setValue(outputGain());
         }
+    }
+
+    private static float outputGain() {
+        return AudioOut.gain(volume) * (ducked ? DUCK : 1);
     }
 
     /** 還不能出聲的話什麼都不做，等第一次操作之後再選一次。錄好的曲子要等下載完才響。 */
@@ -146,7 +163,7 @@ final class BackgroundMusic {
         AudioContext context = AudioOut.context();
         if (output == null) {
             output = context.createGain();
-            output.getGain().setValue(AudioOut.gain(volume));
+            output.getGain().setValue(outputGain());
             output.connect(context.getDestination());
         }
         GainNode leveled = context.createGain();

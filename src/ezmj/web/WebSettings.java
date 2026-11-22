@@ -21,6 +21,9 @@ final class WebSettings {
     boolean voice = true;
     Gender playerGender = Gender.FEMALE;
     boolean animation = true;
+    /** 同桌真人按住說話傳來的語音要不要自動播，關掉的話聊天區照樣可以按重播。和喊牌的「語音」分開。 */
+    boolean playerVoice = true;
+    int playerVoiceVolume = 100;
 
     /** 讀不懂的欄位就用預設值，設定壞了不該讓遊戲打不開。 */
     static WebSettings load() {
@@ -40,6 +43,8 @@ final class WebSettings {
             settings.sound = !Boolean.FALSE.equals(values.get("sound"));
             settings.voice = !Boolean.FALSE.equals(values.get("voice"));
             settings.animation = !Boolean.FALSE.equals(values.get("animation"));
+            settings.playerVoice = !Boolean.FALSE.equals(values.get("playerVoice"));
+            settings.playerVoiceVolume = percent(values, "playerVoiceVolume", settings.playerVoiceVolume, 0, 100);
             settings.music = WebMusic.valueOf(String.valueOf(values.get("music")));
             settings.playerGender = Gender.valueOf(String.valueOf(values.get("playerGender")));
         } catch (RuntimeException e) {
@@ -65,6 +70,8 @@ final class WebSettings {
         values.put("voice", voice);
         values.put("playerGender", playerGender.name());
         values.put("animation", animation);
+        values.put("playerVoice", playerVoice);
+        values.put("playerVoiceVolume", playerVoiceVolume);
         Browser.save(KEY, Json.write(values));
     }
 }

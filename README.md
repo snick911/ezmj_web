@@ -78,6 +78,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 | `ShareDialog`、`GameReport`、`PdfWriter` | 牌局結束後的結果圖與輸贏歷程 PDF | 網頁版才有 |
 | `WaitingOverlay` | 等服務器回應時蓋住畫面的提示 | 網頁版才有 |
 | `SoundEffects`、`BackgroundMusic`、`MusicScores`、`VoiceLines` | 音效、音樂、語音與司儀 | 同名，錄好的曲子是 `RecordedMusic` |
+| `VoiceTalk`、`VoiceRecorder`、`VoicePlayer` | 玩家的語音訊息：按住說話、麥克風錄音、播放，見「玩家語音」 | `VoiceTalk`、`VoicePlayer` 同名，錄音在 `VoiceTalk` 裡 |
 | `WebMusic` | 背景音樂的選項，見下面的「背景音樂」 | `model.MusicTrack` |
 | `WebSettings`、`WebProfile` | 存在瀏覽器裡的設定與上次的牌局 | `AppSettings`、`OnlineProfile` |
 | `Browser`、`Dom`、`AudioOut`、`GridTable`、`TileStrip` | 瀏覽器的小工具 | |
@@ -102,6 +103,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 - **聊天**：連線的牌桌都有，跟電腦打的一人房間也有，走牌局同一條連線的 `chat`。「紀錄」一律預設收起來，空出來的地方給聊天，收合按鈕是 CSS 畫的箭頭。服務器不補送斷線期間的訊息。說太快、太長或舊服務器不能聊天，顯示在聊天區，牌桌上自己那一側也跳一下。有不雅字眼的不送出，字留在輸入框；收到別人的由 `OnlineGame.parseChat` 把不雅字眼換成＊。`ezmjService` 0.9.0 起服務器也擋，回 `badChat`。
   - 牌桌上的泡泡蓋在畫布上，位置由 `TableCanvas.syncChatAnchors` 寫在 CSS 變數 `--chat-x0` 到 `--chat-y3`，和 `--hint-*` 一樣用 `style.setProperty`。
   - 在牌桌上按 Enter 跳出輸入框。按鍵聽整頁的，牌桌換掉之後第一次按鍵時拿掉；游標在輸入框、按鈕或連結上、有 `.backdrop` 或 `.waiting` 蓋著，或輸入法還在選字時不搶。
+- **玩家語音**：按住說話、放開送出的語音訊息，要 `ezmjService` 0.14.0，見下面的「玩家語音」。
 - **擲骰子與牌牆**：照 Swing 版，規則與時間見 `ezmj` README 的「擲骰子與牌牆」。牌牆在服務器上照真的牌桌疊好、擲骰子開門，服務器在 `roundStart` 與 `state` 送 `dice`，`OnlineGame.dice` 用它，畫面上的開門處就是服務器真的拿牌的地方，和同桌的 Swing 版一樣。0.12.0 和更早的服務器沒有送，才從房號、莊家、圈風、局風與連莊數算；`AllTests` 兩種都比對，算法改了要和 `ezmj` 的 `OnlineTest` 一起改。骰子加發牌約 2.4 秒，要在 `roundStart` 的 `dealMs`（3 秒）之內。
 - **聽牌**（程式與協定叫報聽，畫面上一律寫「聽牌」，紀錄裡 `OnlineGame.describe` 的「報聽」也換掉）：照 Swing 版的單機牌局。
   - 跟電腦打與多人的房間都在打牌之前聽牌：`askTurn` 的 `readyDiscards` 有東西時，動作列多一個半透明的「聽牌」（平常 50% 不透明，滑鼠移上去才不透明，不閃）。按了打出去會聽牌的牌加上金框、其他蓋起來，提示列出打哪張聽哪些牌；點一張就送 `listen`（打出並報聽），「取消」回到一般打牌。沒按就打出去的，服務器照樣送 `canListen`，網頁不理。
@@ -143,6 +145,20 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
   - 瀏覽器偶爾不通知說完了：一句念了 6 秒（`MAX_SPEAK_MS`）還沒說完，下一次要念時就停掉它往下念，等著的牌名過時了不喊。
   - 0.18.0 以前每一句都 `cancel()` 掉上一句，「聽牌」一喊出來就被下一家打牌的牌名切掉（速度「中」的電腦 0.75 秒就打下一張，「聽牌」要念將近 1 秒，手機的語音起步更慢），聽起來像沒念。
 
+## 玩家語音
+
+牌桌上按住說話、放開送出，經過服務器轉給同桌的真人，和 Swing 版一樣。不做即時通話：要 WebRTC 與付費的中繼伺服器，Swing 版也做不到。協定見服務器 README 的「語音」。
+
+- **什麼時候有**：`welcome` 的 `features` 有 `voice`（`ezmjService` 0.14.0 起），而且房間裡有別的真人（`VoiceClip.anyoneToHear`），跟電腦打的一人房間沒有。有人補位上場或離開時，收到 `room` 就重新看一次。`createRoom` 與 `joinRoom` 的 `supports` 帶 `voice`，服務器才把別人的語音轉過來。
+- **按鈕**：側欄聊天下面一顆「按住說話」；手機版面在牌桌的選單左邊再一顆（`.talk-corner`，橫向時和選單、全螢幕排在右上角），側欄收著時也按得到，直向時提示右邊讓出它的寬度（`.has-talk`）。按下就 `setPointerCapture`，在按鈕上放開送出、移到外面放開取消；`touch-action: none`，不讓瀏覽器拿去捲動或跳出長按選單。用 Tab 移過來的話按住空白鍵或 Enter 也可以。錄音中按鈕變紅，牌桌上自己那一側亮出「錄音中 N 秒，放開送出」（`.talk-indicator`），手機的按鈕窄，只寫「放開送出」。
+- **錄音**（`VoiceRecorder`）：`getUserMedia` 打開回音消除、降噪與自動增益，牌桌的音樂與喊牌不會錄進去；`ScriptProcessorNode` 一段一段收，接到音量 0 的 `GainNode` 才會動，喇叭不出聲。每次錄完就把麥克風的 track 停掉，分頁上不會一直亮著正在用麥克風。`ScriptProcessorNode` 不建議用了，但每個瀏覽器都還支援；換成 `AudioWorklet` 要另外放一個 JS 檔，CSP 的 `script-src 'self'` 允許。CSP 不管麥克風，GitHub Pages 是 https 才拿得到。
+- **送出**（`VoiceTalk`）：不到 0.3 秒、移到外面放開都不送；錄滿 10 秒自動送出。按下去之前先看自己的頻率限制（每 30 秒 3 則，和服務器一樣），擋下來就不開麥克風。壓縮用 `ezmj` 的 `VoiceClip`：降到 8 kHz、太小聲的放大，再壓成 IMA ADPCM，一秒 4 KB，和 Swing 版一樣，不用瀏覽器的錄音格式。斷線中不送，說一聲。
+- **自己送的**：服務器回一則沒有聲音、只有長度的 `voice`，聊天區的那一行用送出時留著的那份重播。`badVoice`、`voiceTooFast` 拿掉最早那份。斷線時全部丟掉，回覆對不上了。
+- **播放**（`VoicePlayer`）：排在 `AudioContext` 的時間上，一則播完才播下一則，背景分頁的計時器變慢也不會亂；播的時候背景音樂壓到 0.3 倍（`BackgroundMusic.duck`）。自動播放時後面已經排了 20 秒以上就不播。按重播先停掉正在播與排著的。8 kHz 的 `AudioBuffer` 建不起來（舊的 Safari 只收 22.05 kHz 以上）就拉長三倍用 24 kHz。
+- **畫面**：聊天區一行「名字：〔語音 3.2 秒〕」，後面「重播」，別人的再一顆「靜音」，同一位的每一行一起換字；牌桌上那一家旁邊跳泡泡。靜音照畫面座位加名字記，靜音的人不自動播、不跳泡泡，重播照樣能聽。
+- **環境設定**：「玩家語音」（自動播放，預設開啟）與「玩家語音音量」，存在 `ezmj.settings` 的 `playerVoice`、`playerVoiceVolume`，和喊牌的「語音」分開。
+- **測試**：瀏覽器的麥克風在自動測試裡用不了，在主控台把 `navigator.mediaDevices.getUserMedia` 換成回傳 `OscillatorNode` 接 `MediaStreamDestination` 的 stream，按鈕用 `PointerEvent` 按，兩個分頁開在不同的 port（各自的 `localStorage`）。
+
 ## 資安
 
 token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束就清掉。所以：
@@ -171,6 +187,7 @@ token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束�
 | 榮譽榜 | 連線牌局的，由服務器記錄，在大廳的「榮譽榜」。Swing 版選單的榮譽榜是本機單機牌局的 |
 | 結果圖與輸贏 PDF | 網頁版才有，在牌局結束的視窗。PDF 每頁是一張圖，字不能選取 |
 | 牌桌上的聊天泡泡、Enter 聊天 | 網頁版才有 |
+| 玩家語音 | 一樣，聊天區那一行後面直接有「重播」「靜音」；Swing 是點那一行跳出選單。牌桌上的泡泡與錄音中的提示網頁版才有 |
 | 牌桌上的名字 | 比 Swing 版大：中央方框四邊 17，Swing 是 16。都是正的，左右兩家直寫；英文字母與數字直寫時排得比中文字緊一點，Swing 一樣高 |
 | 按鈕的金框 | 用 Tab 移過去才畫，由 `Browser.trackTabFocus` 標上 `data-tab-focus`，不用 `:focus-visible`（按過鍵盤後程式放的焦點也會畫）。Swing 看焦點是不是 Tab 移過來的 |
 | 有火焰時的提示 | 電腦版和 Swing 一樣移到按鈕左邊；手機的動作列窄，照舊在按鈕上面 |

@@ -1,6 +1,8 @@
 package ezmj.web;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 
@@ -16,6 +18,7 @@ import ezmj.online.OnlineGame;
 import ezmj.online.RoomInfo;
 import ezmj.online.RoomListing;
 import ezmj.online.RoomSettings;
+import ezmj.online.VoiceClip;
 
 /**
  * 連線牌局：把服務器的訊息演到畫面上，再把自己的決定送回去，流程對應 Swing 版的 OnlineController。
@@ -110,6 +113,12 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     private boolean substituteRoom;
     private Dialog openDialog;
     private boolean shutDown;
+    /** 服務器會轉語音：welcome 的 features 有 voice（ezmjService 0.14.0 起）。 */
+    private boolean voiceServer;
+    /** 按住說話，牌桌換掉時丟掉還在錄的。 */
+    private final VoiceTalk talk = new VoiceTalk(this::sendVoice);
+    /** 送出去、服務器還沒回覆的語音。回覆只有長度，重播用這裡留著的那份；照送出的順序回來。 */
+    private final Deque<byte[]> sentVoices = new ArrayDeque<>();
 
     OnlineController(Host host, WebSettings settings, String serverUrl) {
         this.host = host;
@@ -184,6 +193,9 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         if (presenter != null) {
             presenter.stop();
         }
+        talk.stop();
+        VoicePlayer.stopAll();
+        sentVoices.clear();
         host.closeHistory();
         game = null;
         view = null;
@@ -205,6 +217,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
     @Override
     public void loggedIn(Map<String, Object> welcome, boolean resumed) {
         host.connected();
+        voiceServer = VoiceClip.serverSupports(welcome);
         if (!resumed) {
             profile.save();
             afterLogin.run();
@@ -227,6 +240,12 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         dealPending = false;
         waiting = false;
         askAgain = null;
+        // 還在錄的丟掉；送出去還沒回覆的，服務器不一定收到，回覆也對不上了
+        talk.stop();
+        if (view != null) {
+            view.setTalk(null);
+        }
+        sentVoices.clear();
         // 重連後服務器會再送房間，已經開局的話就直接換成牌桌
         starting = false;
         if (awaitingSubstitute) {
@@ -307,6 +326,9 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
                 break;
             case "chat":
                 onChat(message);
+                break;
+            case "voice":
+                onVoice(message);
                 break;
             case "left":
                 forgetGame();
@@ -403,6 +425,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
             if (roundBound) {
                 view.refresh(game, game);
             }
+            // 有人補位上場或離開，說話的按鈕跟著出現或藏起來
+            view.setTalk(voiceServer && VoiceClip.anyoneToHear(info) ? talk : null);
         } else if (!finishing) {
             closeTable();
             showRoom();
@@ -491,6 +515,12 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
             if (view != null) {
                 view.showChatNotice(code.equals("unknownType") ? "這台服務器還不能聊天。" : text);
             }
+        } else if (code.equals("badVoice") || code.equals("voiceTooFast")) {
+            // 被拒的是最早送出、還沒回覆的那一則
+            sentVoices.poll();
+            if (view != null) {
+                view.showChatNotice(text);
+            }
         } else if (presenter != null) {
             view.appendLog(text);
             view.setHint(text);
@@ -518,6 +548,38 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         }
         OnlineGame.Chat chat = game.parseChat(message);
         view.appendChat(chat.seat(), chat.name(), chat.text(), chat.seat() == 0);
+    }
+
+    /** 送出按住說話錄好的語音。斷線中送不出去就說一聲，不然對方沒聽到，自己還以為送出了。 */
+    private void sendVoice(byte[] data) {
+        if (!client.isConnected()) {
+            if (view != null) {
+                view.showChatNotice(VoiceClip.OFFLINE_TEXT);
+            }
+            return;
+        }
+        sentVoices.add(data);
+        client.voice(data);
+    }
+
+    /**
+     * 語音和聊天一樣只在牌桌上看得到。別人的照設定自動播，靜音的人不播；聊天區都留一行可以重播。
+     * 自己送的服務器只回長度，聲音用送出時留著的那份。
+     */
+    private void onVoice(Map<String, Object> message) {
+        if (view == null || game == null) {
+            return;
+        }
+        OnlineGame.Voice voice = game.parseVoice(message);
+        boolean mine = voice.seat() == 0;
+        byte[] data = mine ? sentVoices.poll() : voice.data();
+        String muteKey = voice.seat() + "\n" + voice.name();
+        Runnable replay = data == null ? null
+                : () -> VoicePlayer.play(VoiceClip.decode(data), settings.playerVoiceVolume, true);
+        view.appendVoice(voice.seat(), voice.name(), voice.ms(), mine, muteKey, replay);
+        if (!mine && data != null && settings.playerVoice && !view.isMuted(muteKey)) {
+            VoicePlayer.play(VoiceClip.decode(data), settings.playerVoiceVolume, false);
+        }
     }
 
     private void leaveRoom() {

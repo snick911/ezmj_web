@@ -8,6 +8,7 @@ import org.teavm.jso.dom.html.HTMLOptionElement;
 import org.teavm.jso.dom.html.HTMLSelectElement;
 
 import ezmj.model.Gender;
+import ezmj.online.VoiceClip;
 
 /** 環境設定，改了立刻生效並存起來。等待時間與電腦速度是房間的設定，不在這裡。 */
 final class SettingsDialog extends Dialog {
@@ -51,6 +52,14 @@ final class SettingsDialog extends Dialog {
             VoiceLines.setVolume(value);
         });
         addGenderRow();
+        addCheck(VoiceClip.SETTING_LABEL, settings.playerVoice, on -> {
+            settings.playerVoice = on;
+            if (!on) {
+                VoicePlayer.stopAll();
+            }
+        });
+        addSlider(VoiceClip.VOLUME_LABEL, 0, 100, 1, settings.playerVoiceVolume,
+                value -> settings.playerVoiceVolume = value);
         addCheck("動畫", settings.animation, on -> settings.animation = on);
         if (!Browser.canSpeak()) {
             card.appendChild(Dom.text("div", "muted", "這個瀏覽器不支援語音，語音設定沒有作用。"));
@@ -58,6 +67,7 @@ final class SettingsDialog extends Dialog {
             card.appendChild(Dom.text("div", "muted", "語音是喊牌與司儀（宣布流局與連莊，用另一個女聲），"
                     + "用瀏覽器的語音合成，聲音依裝置而異；沒有中文語音的裝置不會出聲。"));
         }
+        card.appendChild(Dom.text("div", "muted", VoiceClip.SETTING_NOTE));
         card.appendChild(Dom.button("關閉", Theme.BUTTON, this::finish));
     }
 

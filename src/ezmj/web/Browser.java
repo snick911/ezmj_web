@@ -122,6 +122,19 @@ final class Browser {
     @JSBody(script = "return 'ontouchstart' in window;")
     static native boolean isTouchDevice();
 
+    /** 按下之後手指或滑鼠移出元件，放開時還是通知這個元件，才知道是在外面放開的。 */
+    @JSBody(params = {"element", "event"}, script = "try { element.setPointerCapture(event.pointerId); } catch (e) { }")
+    static native void capturePointer(HTMLElement element, Event event);
+
+    /** 滑鼠或手指的位置在元件裡面。 */
+    @JSBody(params = {"element", "event"}, script = "var r = element.getBoundingClientRect();"
+            + "return event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom;")
+    static native boolean pointerInside(HTMLElement element, Event event);
+
+    /** 按著不放時鍵盤會一直送 keydown，只有第一次要算。 */
+    @JSBody(params = "event", script = "return !!event.repeat;")
+    static native boolean isRepeat(Event event);
+
     /** 中文輸入法還在選字，這時的 Enter 是選字，不是送出。 */
     @JSBody(params = "event", script = "return !!(event.isComposing || event.keyCode === 229);")
     static native boolean isComposing(Event event);

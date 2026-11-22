@@ -26,6 +26,7 @@ import ezmj.online.OnlineClient;
 import ezmj.online.OnlineGame;
 import ezmj.online.RoomInfo;
 import ezmj.online.RoomSettings;
+import ezmj.online.VoiceClip;
 
 /**
  * 測試不依賴框架，直接執行 main。這裡只測不碰瀏覽器的部分，畫面與連線用 tools/autoplay.js 在瀏覽器裡實際打一場。
@@ -78,7 +79,9 @@ public final class AllTests {
         same(Json.write(Messages.helloName("小明")), "{\"type\":\"hello\",\"protocol\":1,\"name\":\"小明\"}");
         same(Json.write(Messages.helloToken("t")), "{\"type\":\"hello\",\"protocol\":1,\"token\":\"t\"}");
         same(Json.write(Messages.joinRoom("K7M2QX")),
-                "{\"type\":\"joinRoom\",\"code\":\"K7M2QX\",\"supports\":[\"expert\",\"substitute\",\"listenWin\"]}");
+                "{\"type\":\"joinRoom\",\"code\":\"K7M2QX\",\"supports\":[\"expert\",\"substitute\",\"listenWin\",\"voice\"]}");
+        byte[] clip = VoiceClip.encode(new float[VoiceClip.RATE], VoiceClip.RATE);
+        same(Json.write(Messages.voice(clip)), "{\"type\":\"voice\",\"data\":\"" + VoiceClip.toBase64(clip) + "\"}");
         same(Json.write(Messages.discard(3, tile)), "{\"type\":\"discard\",\"waitId\":3,\"tile\":\"5z\"}");
         same(Json.write(Messages.declareListen(7)), "{\"type\":\"declareListen\",\"listenId\":7}");
         same(Json.write(Messages.listen(3, tile)), "{\"type\":\"listen\",\"waitId\":3,\"tile\":\"5z\"}");

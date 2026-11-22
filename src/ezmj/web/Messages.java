@@ -8,6 +8,7 @@ import java.util.Map;
 import ezmj.model.Tile;
 import ezmj.online.OnlineClient;
 import ezmj.online.RoomSettings;
+import ezmj.online.VoiceClip;
 
 /** 送給服務器的訊息，協定見 ezmjService 的 README。不碰瀏覽器，所以可以在 JVM 上測試。 */
 final class Messages {
@@ -57,8 +58,9 @@ final class Messages {
      * 也看得懂補位的訊息，所以可以中途加入隨時補位的牌局，大廳也要列出那些牌局。
      * listenWin 是聽牌後等的牌來了，服務器先問、讓玩家自己按「胡」（ezmjService 0.12.0 起），開房間與加入都要說；
      * 更舊的服務器不理，照舊直接自動胡。
+     * voice 是聽得懂語音訊息，服務器才把別人的語音轉過來（ezmjService 0.14.0 起）。
      */
-    private static final List<String> SUPPORTS = List.of("expert", "substitute", "listenWin");
+    private static final List<String> SUPPORTS = List.of("expert", "substitute", "listenWin", VoiceClip.FEATURE);
 
     /** 不用登入。說會補位，列表才有可以補位的牌局；舊服務器不理 supports。 */
     static Map<String, Object> listRooms() {
@@ -102,6 +104,11 @@ final class Messages {
 
     static Map<String, Object> chat(String text) {
         return object("type", "chat", "text", text);
+    }
+
+    /** 語音訊息，data 是 VoiceClip.encode 壓好的，格式和 Swing 版一樣。 */
+    static Map<String, Object> voice(byte[] data) {
+        return VoiceClip.message(data);
     }
 
     static Map<String, Object> selfWin(int waitId) {

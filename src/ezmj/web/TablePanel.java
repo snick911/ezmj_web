@@ -1,6 +1,10 @@
 package ezmj.web;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -19,6 +23,7 @@ import ezmj.model.BadWords;
 import ezmj.model.Dice;
 import ezmj.model.Player;
 import ezmj.model.Tile;
+import ezmj.online.VoiceClip;
 
 /**
  * 牌桌主畫面：中間是牌桌，下方是動作列，右側是計分板、紀錄與聊天。多人遊戲不能電腦代打，所以沒有那顆按鈕。
@@ -94,6 +99,17 @@ final class TablePanel {
     private boolean drawerOpen;
     /** 聊天送出的地方；沒有聊天時是 null。 */
     private Consumer<String> chatSender;
+    /**
+     * 按住說話：側欄聊天下面一顆，手機版面在牌桌的選單旁邊再一顆（側欄收著時按不到）。錄音中牌桌上自己那一側
+     * 亮一條紅色的提示，寫錄了幾秒，兩顆按鈕都看得到。房間裡沒有別的真人或服務器不會轉語音時藏起來。
+     */
+    private final HTMLButtonElement talkSide = talkButton("btn talk-button");
+    private final HTMLButtonElement talkCorner = talkButton("btn talk-corner");
+    private final HTMLElement talkIndicator = Dom.text("div", "talk-indicator", " ");
+    private VoiceTalk talk;
+    /** 靜音的人（畫面座位加名字），他們的語音不自動播，也不跳泡泡；聊天區的按鈕跟著換字。 */
+    private final Set<String> muted = new HashSet<>();
+    private final Map<String, List<HTMLButtonElement>> muteButtons = new HashMap<>();
 
     TablePanel(Consumer<Tile> onDiscard, Runnable onLeave, Runnable onShowHistory, Runnable onSettings, Runnable onHelp) {
         canvas = new TableCanvas(onDiscard);
@@ -101,6 +117,7 @@ final class TablePanel {
         main.appendChild(canvas.element());
         // 手機直向時兩顆按鈕分在動作列左右上角，橫向時一起浮在牌桌右上角
         HTMLElement corner = Dom.el("div", "corner-buttons");
+        corner.appendChild(talkCorner);
         menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
         menu.setClassName("btn menu-button");
         corner.appendChild(menu);
@@ -221,6 +238,9 @@ final class TablePanel {
         quickChat.appendChild(quickField);
         Dom.visible(quickChat, false);
         chatLayer.appendChild(quickChat);
+        talkIndicator.setAttribute("role", "status");
+        Dom.visible(talkIndicator, false);
+        chatLayer.appendChild(talkIndicator);
         canvas.element().appendChild(chatLayer);
         canvas.setChatLayer(chatLayer);
         HTMLDocument.current().addEventListener("keydown", hotkey);
@@ -289,8 +309,153 @@ final class TablePanel {
         input.appendChild(chatField);
         input.appendChild(Dom.button("送出", Theme.BUTTON, this::sendChat));
         chatBox.appendChild(input);
+        chatBox.appendChild(talkSide);
         Dom.visible(chatBox, false);
         return chatBox;
+    }
+
+    /**
+     * 按住說話的按鈕：按下開始錄、在按鈕上放開送出、移到外面放開取消。按下就抓住指標，手指滑出去放開也會通知這顆按鈕。
+     * 用 Tab 移過來的話，按住空白鍵或 Enter 也可以。沒有 click 的動作，長按也不跳出選單。
+     */
+    private HTMLButtonElement talkButton(String cssClass) {
+        HTMLButtonElement button = (HTMLButtonElement) Dom.text("button", cssClass, VoiceClip.TALK_LABEL);
+        button.setType("button");
+        button.setAttribute("aria-label", VoiceClip.TALK_LABEL);
+        button.addEventListener("pointerdown", event -> {
+            event.preventDefault();
+            Browser.capturePointer(button, event);
+            if (talk != null) {
+                talk.press();
+            }
+        });
+        button.addEventListener("pointerup", event -> {
+            if (talk != null) {
+                talk.release(Browser.pointerInside(button, event));
+            }
+        });
+        button.addEventListener("pointercancel", event -> {
+            if (talk != null) {
+                talk.release(false);
+            }
+        });
+        button.addEventListener("contextmenu", Event::preventDefault);
+        button.addEventListener("keydown", event -> {
+            String key = ((KeyboardEvent) event).getKey();
+            if (" ".equals(key) || "Enter".equals(key)) {
+                event.preventDefault();
+                if (talk != null && !Browser.isRepeat(event)) {
+                    talk.press();
+                }
+            }
+        });
+        button.addEventListener("keyup", event -> {
+            String key = ((KeyboardEvent) event).getKey();
+            if ((" ".equals(key) || "Enter".equals(key)) && talk != null) {
+                event.preventDefault();
+                talk.release(true);
+            }
+        });
+        // 按著的時候按鈕失去焦點（例如切到別的視窗），就收不到放開了
+        button.addEventListener("blur", event -> {
+            if (talk != null && talk.isRecording()) {
+                talk.release(false);
+            }
+        });
+        Dom.visible(button, false);
+        return button;
+    }
+
+    /**
+     * 房間裡有別的真人、服務器也會轉語音時才有說話的按鈕，傳 null 就藏起來，還在錄的也丟掉。
+     * 跟電腦打的一人房間沒有人聽，所以沒有。
+     */
+    void setTalk(VoiceTalk voiceTalk) {
+        if (talk == voiceTalk) {
+            return;
+        }
+        if (talk != null) {
+            talk.stop();
+            talkState(VoiceClip.TALK_LABEL, false);
+        }
+        talk = voiceTalk;
+        if (talk != null) {
+            talk.attach(new VoiceTalk.View() {
+                @Override
+                public void talkState(String label, boolean recording) {
+                    TablePanel.this.talkState(label, recording);
+                }
+
+                @Override
+                public void talkNotice(String text) {
+                    showChatNotice(text);
+                }
+            });
+        }
+        Dom.visible(talkSide, talk != null);
+        Dom.visible(talkCorner, talk != null);
+        // 手機直向的提示要讓出牌桌上那顆按鈕的位置，見 style.css
+        root.setClassName(talk != null ? "table-screen has-talk" : "table-screen");
+    }
+
+    /** 錄音中按鈕變紅，牌桌上自己那一側亮出錄了幾秒；牌桌上的按鈕窄，錄音中只寫「放開送出」。 */
+    private void talkState(String label, boolean recording) {
+        talkSide.setInnerText(recording ? label : VoiceClip.TALK_LABEL);
+        talkCorner.setInnerText(recording ? "放開送出" : VoiceClip.TALK_LABEL);
+        talkSide.setClassName(recording ? "btn talk-button recording" : "btn talk-button");
+        talkCorner.setClassName(recording ? "btn talk-corner recording" : "btn talk-corner");
+        talkIndicator.setInnerText(label);
+        Dom.visible(talkIndicator, recording);
+    }
+
+    /**
+     * 聊天區一行「名字：〔語音 3.2 秒〕」，後面是重播，別人的再一顆靜音。牌桌上說話的那家旁邊跳泡泡，靜音的人不跳。
+     * replay 是 null 時沒有重播，例如自己送的、服務器回覆時已經找不到那一份。muteKey 認得是哪一位，見 isMuted。
+     */
+    void appendVoice(int seat, String name, int ms, boolean mine, String muteKey, Runnable replay) {
+        HTMLElement line = Dom.el("div", mine ? "chat-line voice-line mine" : "chat-line voice-line");
+        line.appendChild(Dom.text("span", "chat-name", (mine ? "我" : name) + "："));
+        line.appendChild(Dom.text("span", "voice-label", VoiceClip.label(ms)));
+        if (replay != null) {
+            HTMLButtonElement again = Dom.button(VoiceClip.REPLAY_LABEL, Theme.BUTTON, replay);
+            again.setClassName("btn voice-action");
+            line.appendChild(again);
+        }
+        if (!mine) {
+            HTMLButtonElement mute = Dom.button(muteLabel(muteKey), Theme.PANEL, () -> toggleMute(muteKey));
+            mute.setClassName("btn voice-action");
+            muteButtons.computeIfAbsent(muteKey, key -> new ArrayList<>()).add(mute);
+            line.appendChild(mute);
+        }
+        chatList.appendChild(line);
+        chatList.setScrollTop(chatList.getScrollHeight());
+        chatNotice.setInnerText(" ");
+        if (mine || !isMuted(muteKey)) {
+            showBubble(seat, mine ? "我" : name, VoiceClip.label(ms), mine ? "chat-bubble mine" : "chat-bubble");
+        }
+        if (!mine && !isMuted(muteKey) && !drawerOpen) {
+            menu.setClassName("btn menu-button unread");
+        }
+    }
+
+    /** 這一位被靜音了：他的語音不自動播。 */
+    boolean isMuted(String muteKey) {
+        return muted.contains(muteKey);
+    }
+
+    private String muteLabel(String muteKey) {
+        return isMuted(muteKey) ? VoiceClip.UNMUTE_LABEL : VoiceClip.MUTE_LABEL;
+    }
+
+    /** 靜音或取消，這一位每一行的按鈕都換字。靜音時正在播的也停掉。 */
+    private void toggleMute(String muteKey) {
+        if (!muted.remove(muteKey)) {
+            muted.add(muteKey);
+            VoicePlayer.stopAll();
+        }
+        for (HTMLButtonElement button : muteButtons.getOrDefault(muteKey, List.of())) {
+            button.setInnerText(muteLabel(muteKey));
+        }
     }
 
     /**

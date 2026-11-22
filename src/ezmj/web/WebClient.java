@@ -157,6 +157,11 @@ final class WebClient {
         send(Messages.chat(text));
     }
 
+    /** 語音訊息。服務器轉給房間裡其他連著的真人，自己只收到一則沒有聲音的回覆。 */
+    void voice(byte[] data) {
+        send(Messages.voice(data));
+    }
+
     void selfWin(int waitId) {
         send(Messages.selfWin(waitId));
     }
