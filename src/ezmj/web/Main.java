@@ -101,6 +101,7 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
         }
     }
 
+    /** 開房間還不切全螢幕：房主多半要切到別的 App 傳房號，在房間按「開始牌局」時才切，見 OnlineController.startFromRoom。 */
     @Override
     public void create(String name, RoomSettings roomSettings, boolean expert, boolean substitute) {
         connecting("房間建立中，請耐心等待…");
@@ -109,18 +110,22 @@ public final class Main implements OnlineController.Host, OnlinePanel.Actions {
 
     @Override
     public void playBots(String name, RoomSettings roomSettings, boolean expert) {
+        Browser.fullscreenOnPhone();
         connecting(OnlineController.STARTING);
         controller.playBots(name, roomSettings, expert);
     }
 
+    /** 加入的人在房間等房主開局，開局時沒有自己按的按鈕，所以加入時就切全螢幕。補位也是走這裡。 */
     @Override
     public void join(String name, String code) {
+        Browser.fullscreenOnPhone();
         connecting("加入房間中，請耐心等待…");
         controller.joinRoom(name, code);
     }
 
     @Override
     public void resume(WebProfile profile) {
+        Browser.fullscreenOnPhone();
         connecting("接回牌局中，請耐心等待…");
         controller.resume(profile);
     }

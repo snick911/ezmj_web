@@ -450,9 +450,15 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         host.showWaiting(STARTING);
     }
 
+    /** 房主在房間按「開始牌局」：手機先切全螢幕，要在按下的當下切，瀏覽器才准。 */
+    private void startFromRoom() {
+        Browser.fullscreenOnPhone();
+        startGame();
+    }
+
     private void showRoom() {
         if (roomPanel == null) {
-            roomPanel = new RoomPanel(this::startGame, this::leaveRoom);
+            roomPanel = new RoomPanel(this::startFromRoom, this::leaveRoom);
         }
         roomPanel.setRoom(room, expert, substituteRoom);
         host.showRoom(roomPanel);

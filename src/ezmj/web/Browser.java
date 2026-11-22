@@ -84,6 +84,18 @@ final class Browser {
     static native void toggleFullscreen();
 
     /**
+     * 手機進入牌局時先切到全螢幕，牌桌才夠大。瀏覽器只准在使用者點按的當下切換，所以要在開局、加入、接回這些按鈕的
+     * 處理裡直接呼叫。已經是全螢幕、不是手機（電腦開窄視窗、觸控筆電）或不支援（iPhone 的 Safari）就不動；
+     * 被拒絕就維持原樣，牌桌的「全螢幕」按鈕照舊能用。手機的條件是手指操作加上手機版面，版面的條件和 isCompact 一樣。
+     */
+    @JSBody(script = "if (!document.fullscreenEnabled || document.fullscreenElement) { return; }"
+            + "if (!window.matchMedia('(pointer: coarse)').matches"
+            + " || !window.matchMedia('(max-width: 900px), (max-height: 560px)').matches) { return; }"
+            + "document.documentElement.requestFullscreen()"
+            + ".catch(function (e) { console.warn('不能切換全螢幕：' + e.message); });")
+    static native void fullscreenOnPhone();
+
+    /**
      * 用 Tab 移到的元件標上 data-tab-focus，style.css 照它畫按鈕的金框，和 Swing 版的按鈕一樣：
      * 滑鼠點的或程式放的焦點（例如視窗打開時的第一個按鈕）不畫。:focus-visible 在按過鍵盤之後，
      * 程式放的焦點也會畫，所以自己記。滑鼠點按鈕照舊會拿到焦點。整頁只裝一次。
@@ -203,26 +215,23 @@ final class Browser {
             + "return meta ? meta.content : '';")
     static native String meta(String name);
 
-    /** speak 的聲音：喊牌的女聲、男聲，以及司儀。 */
+    /** utterance 的聲音：喊牌的女聲、男聲，以及司儀。 */
     static final int VOICE_FEMALE = 0;
     static final int VOICE_MALE = 1;
     static final int VOICE_ANNOUNCER = 2;
-    /** 司儀的一句話最多等這麼久（包括排在正在喊的那句後面）。瀏覽器偶爾不通知說完了，過了這段時間喊牌就不再讓它。 */
-    private static final int ANNOUNCER_MAX_MS = 6_000;
 
     /**
-     * 念一句話。voice 是 VOICE_FEMALE、VOICE_MALE 或 VOICE_ANNOUNCER；要男聲卻找不到男聲就靠壓低音調。
-     * 喊牌的新一句會打斷還沒喊完的上一句。司儀不打斷，排在正在喊的那句後面，和 Swing 版一樣一句念完才念下一句；
-     * 司儀說完之前，droppable 的牌名就不喊了，吃碰槓胡排在司儀後面，一定念到。
+     * 要念的一句話，交給 speakQueued 念；瀏覽器不能念或沒有中文語音時是 null。
+     * voice 是 VOICE_FEMALE、VOICE_MALE 或 VOICE_ANNOUNCER；要男聲卻找不到男聲就靠壓低音調。
      * 司儀挑和喊牌不同的女聲，依序找 Yating、HsiaoChen、HsiaoYu、Hanhan，再來是任何台灣女聲、任何中文女聲（粵語除外），
-     * 都沒有才用喊牌的女聲。
+     * 都沒有才用喊牌的女聲。誰先念、誰打斷誰見 SpeechQueue。
      */
-    @JSBody(params = {"text", "voice", "volume", "pitch", "rate", "droppable"},
-            script = "if (!window.speechSynthesis) { return; }"
+    @JSBody(params = {"text", "voice", "volume", "pitch", "rate"},
+            script = "if (!window.speechSynthesis) { return null; }"
             + "var synth = window.speechSynthesis;"
             + "var voices = synth.getVoices();"
             + "var chinese = voices.filter(function (v) { return /^zh/i.test(v.lang); });"
-            + "if (voices.length > 0 && chinese.length === 0) { return; }"
+            + "if (voices.length > 0 && chinese.length === 0) { return null; }"
             + "var taiwan = chinese.filter(function (v) { return /TW/i.test(v.lang); });"
             + "var pool = taiwan.length > 0 ? taiwan : chinese;"
             + "var maleNames = /male|Zhiwei|Yunxi|Yunjhe|Yunyang|Kangkang|男/i;"
@@ -243,20 +252,25 @@ final class Browser {
             + "utterance.volume = volume;"
             + "utterance.pitch = male && matching.length === 0 ? pitch * .6 : pitch;"
             + "utterance.rate = rate;"
-            + "var now = performance.now();"
-            + "if (voice === 2) {"
-            + " var state = {utterance: utterance, until: now + " + ANNOUNCER_MAX_MS + "};"
-            + " window.ezmjAnnouncer = state;"
-            + " utterance.onend = utterance.onerror = function () {"
-            + "  if (window.ezmjAnnouncer === state) { window.ezmjAnnouncer = null; } };"
-            + " synth.speak(utterance);"
-            + " return; }"
-            + "if (window.ezmjAnnouncer && window.ezmjAnnouncer.until > now) {"
-            + " if (!droppable) { synth.speak(utterance); }"
-            + " return; }"
-            + "synth.cancel();"
-            + "synth.speak(utterance);")
-    static native void speak(String text, int voice, double volume, double pitch, double rate, boolean droppable);
+            + "return utterance;")
+    static native JSObject utterance(String text, int voice, double volume, double pitch, double rate);
+
+    /**
+     * 念 utterance 傳回的一句。念完、被打斷或念不出來時呼叫 done 一次。SpeechQueue 一次只交一句，念完才交下一句。
+     * 念完之前留著參照：Chrome 的 utterance 沒人參照時可能被回收，就不會通知說完了。
+     */
+    @JSBody(params = {"utterance", "done"}, script = "var live = window.ezmjSpeaking || (window.ezmjSpeaking = []);"
+            + "live.push(utterance);"
+            + "var called = false;"
+            + "utterance.onend = utterance.onerror = function () {"
+            + " var at = live.indexOf(utterance); if (at >= 0) { live.splice(at, 1); }"
+            + " if (!called) { called = true; done(); } };"
+            + "window.speechSynthesis.speak(utterance);")
+    static native void speakQueued(JSObject utterance, Callback done);
+
+    /** 停掉正在念的與排著的。 */
+    @JSBody(script = "if (window.speechSynthesis) { window.speechSynthesis.cancel(); }")
+    static native void cancelSpeech();
 
     @JSBody(script = "return !!window.speechSynthesis;")
     static native boolean canSpeak();

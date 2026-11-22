@@ -1,5 +1,7 @@
 package ezmj.web;
 
+import org.teavm.jso.JSObject;
+
 import ezmj.model.Gender;
 import ezmj.model.Tile;
 
@@ -8,7 +10,7 @@ import ezmj.model.Tile;
  * 沒有中文語音的裝置就不出聲，遊戲其他部分不受影響。
  * <p>
  * 司儀和 Swing 版一樣是喊牌以外的另一個女聲，宣布流局，連莊時新局開始說「連莊，連二拉二」：
- * 念得稍慢，不調音高、不加驚嘆號，聽起來穩重清楚。挑哪個聲音見 Browser.speak。
+ * 念得稍慢，不調音高、不加驚嘆號，聽起來穩重清楚。挑哪個聲音見 Browser.utterance，誰先念見 SpeechQueue。
  */
 final class VoiceLines {
 
@@ -27,6 +29,11 @@ final class VoiceLines {
         }
     }
 
+    /** 排隊時是哪一種話：牌名、吃碰槓，或一定念到的聽牌、胡、自摸與司儀。見 SpeechQueue。 */
+    private enum Kind {
+        TILE, CALL, MUST
+    }
+
     /** 連莊念到連幾拉幾，再多就只說「連莊」，和 Swing 版一樣。 */
     static final int MAX_ANNOUNCED_STREAK = 20;
     static final String DRAWN_GAME_TEXT = "流局";
@@ -42,6 +49,8 @@ final class VoiceLines {
     private static final double ANNOUNCER_RATE = .95;
 
     private static int volume = 100;
+    /** 第一次出聲時才建立，在 JVM 上測試時不會碰到瀏覽器。 */
+    private static SpeechQueue<JSObject> queue;
 
     private VoiceLines() {
     }
@@ -60,18 +69,22 @@ final class VoiceLines {
         }
     }
 
-    /** 吃、碰、槓、胡這些一定會念，司儀還在說的話排在後面。 */
+    /**
+     * 吃、碰、槓、胡、自摸、聽牌：打斷正在喊的牌名，前面還有這些話就排在後面。胡、自摸、聽牌一定念到；
+     * 吃碰槓排太久就不念了，見 SpeechQueue.CALL_STALE_MS。
+     */
     static void play(Line line, Gender gender) {
+        Kind kind = line == Line.CHOW || line == Line.PONG || line == Line.KONG ? Kind.CALL : Kind.MUST;
         if (line == Line.SELF_WIN) {
-            say(line.text(), gender, EXCITED_PITCH, EXCITED_RATE, false);
+            say(line.text(), gender, EXCITED_PITCH, EXCITED_RATE, kind);
         } else {
-            say(line.text(), gender, 1, NORMAL_RATE, false);
+            say(line.text(), gender, 1, NORMAL_RATE, kind);
         }
     }
 
-    /** 喊出打出的這張牌。司儀還在說的話就不喊了，免得越落越後面。 */
+    /** 喊出打出的這張牌。前面的話還沒念完就先等著，又有新的一句就不喊了，免得越落越後面。 */
     static void play(Tile tile, Gender gender) {
-        say(tileText(tile), gender, 1, NORMAL_RATE, true);
+        say(tileText(tile), gender, 1, NORMAL_RATE, Kind.TILE);
     }
 
     /** 1 到 99 的中文數字：2 是「二」、10 是「十」、12 是「十二」、20 是「二十」。 */
@@ -113,14 +126,50 @@ final class VoiceLines {
 
     private static void announce(String text) {
         if (volume > 0) {
-            Browser.speak(text, Browser.VOICE_ANNOUNCER, volume / 100.0, 1, ANNOUNCER_RATE, false);
+            enqueue(Browser.utterance(text, Browser.VOICE_ANNOUNCER, volume / 100.0, 1, ANNOUNCER_RATE), Kind.MUST);
         }
     }
 
-    private static void say(String text, Gender gender, double pitch, double rate, boolean droppable) {
+    private static void say(String text, Gender gender, double pitch, double rate, Kind kind) {
         if (volume > 0) {
-            Browser.speak(text, gender == Gender.MALE ? Browser.VOICE_MALE : Browser.VOICE_FEMALE,
-                    volume / 100.0, pitch, rate, droppable);
+            enqueue(Browser.utterance(text, gender == Gender.MALE ? Browser.VOICE_MALE : Browser.VOICE_FEMALE,
+                    volume / 100.0, pitch, rate), kind);
+        }
+    }
+
+    /** 排隊的規則見 SpeechQueue。瀏覽器不能念就不出聲。 */
+    private static void enqueue(JSObject utterance, Kind kind) {
+        if (utterance == null) {
+            return;
+        }
+        if (queue == null) {
+            queue = new SpeechQueue<>(new SpeechQueue.Speaker<>() {
+                @Override
+                public void speak(JSObject line, Runnable done) {
+                    Browser.speakQueued(line, done::run);
+                }
+
+                @Override
+                public void cancel() {
+                    Browser.cancelSpeech();
+                }
+
+                @Override
+                public double now() {
+                    return Browser.now();
+                }
+            });
+        }
+        switch (kind) {
+            case TILE:
+                queue.tile(utterance);
+                break;
+            case CALL:
+                queue.call(utterance);
+                break;
+            default:
+                queue.mustSay(utterance);
+                break;
         }
     }
 }

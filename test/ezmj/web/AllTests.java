@@ -5,6 +5,8 @@ import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -48,6 +50,7 @@ public final class AllTests {
         recordingsAreShipped();
         recordedMusicIsOnlyTurnedDown();
         voiceTextUsesTableNames();
+        listeningIsNotCutOff();
         announcerSaysTheStreak();
         diceMatchSwingClient();
         pdfOffsetsPointAtObjects();
@@ -404,5 +407,105 @@ public final class AllTests {
         same(VoiceLines.tileText(Tile.of(Suit.WIND, 1)), "東風");
         same(VoiceLines.tileText(Tile.of(Suit.DRAGON, 1)), "紅中");
         same(VoiceLines.tileText(Tile.of(Suit.WAN, 5)), "五萬");
+    }
+
+    /** 假的語音：記下念了什麼、停了幾次，念完由測試決定。 */
+    private static final class FakeSpeaker implements SpeechQueue.Speaker<String> {
+        final List<String> calls = new ArrayList<>();
+        final Map<String, Runnable> done = new HashMap<>();
+        double now;
+
+        @Override
+        public void speak(String line, Runnable onDone) {
+            calls.add(line);
+            done.put(line, onDone);
+        }
+
+        @Override
+        public void cancel() {
+            calls.add("停");
+        }
+
+        @Override
+        public double now() {
+            return now;
+        }
+
+        void finish(String line) {
+            done.remove(line).run();
+        }
+
+        String took() {
+            String all = String.join(" ", calls);
+            calls.clear();
+            return all;
+        }
+    }
+
+    /** 一定要念的話不被切掉、彼此排隊；牌名只喊最新的一張，一定要念的話會打斷牌名。 */
+    private static void listeningIsNotCutOff() {
+        FakeSpeaker speaker = new FakeSpeaker();
+        SpeechQueue<String> queue = new SpeechQueue<>(speaker);
+
+        // 新的牌名打斷還沒喊完的上一張
+        queue.tile("五萬");
+        queue.tile("三條");
+        same(speaker.took(), "五萬 停 三條");
+
+        // 打牌後馬上聽牌：「聽牌」打斷牌名
+        queue.tile("一筒");
+        queue.mustSay("聽牌");
+        same(speaker.took(), "停 一筒 停 聽牌");
+        // 「聽牌」還沒念完，下一家的牌名不打斷它，先等著，只留最新的一張
+        queue.tile("東風");
+        queue.tile("紅中");
+        same(speaker.took(), "");
+        speaker.finish("聽牌");
+        same(speaker.took(), "紅中");
+        // 被打斷的牌名很晚才通知說完，不算
+        speaker.finish("一筒");
+        same(speaker.took(), "");
+
+        // 一定要念的話一句接一句，不互相打斷；進來時還在等的牌名就不喊了
+        queue.call("碰");
+        queue.tile("九萬");
+        queue.mustSay("胡");
+        same(speaker.took(), "停 碰");
+        speaker.finish("碰");
+        same(speaker.took(), "胡");
+        speaker.finish("胡");
+        same(speaker.took(), "");
+        queue.tile("二條");
+        same(speaker.took(), "二條");
+        speaker.finish("二條");
+
+        // 吃碰槓排太久就不念，聽牌照樣念
+        queue.call("吃");
+        queue.call("碰");
+        queue.mustSay("聽牌");
+        queue.call("槓");
+        speaker.now += SpeechQueue.CALL_STALE_MS - 1;
+        speaker.finish("吃");
+        same(speaker.took(), "吃 碰");
+        speaker.now += 1;
+        speaker.finish("碰");
+        same(speaker.took(), "聽牌");
+        speaker.finish("聽牌");
+        same(speaker.took(), "");
+
+        // 瀏覽器沒通知說完：念太久就停掉，往下念排著的；等著的牌名過時了，不喊
+        queue.mustSay("流局");
+        queue.mustSay("連莊");
+        queue.tile("八萬");
+        speaker.now += SpeechQueue.MAX_SPEAK_MS;
+        queue.tile("白板");
+        same(speaker.took(), "流局 停 連莊");
+        speaker.finish("流局");
+        same(speaker.took(), "");
+        speaker.finish("連莊");
+        same(speaker.took(), "白板");
+        speaker.now += SpeechQueue.MAX_SPEAK_MS;
+        queue.mustSay("自摸");
+        same(speaker.took(), "停 自摸");
     }
 }
