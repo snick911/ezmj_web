@@ -7,7 +7,7 @@ import org.teavm.jso.webaudio.AudioContext;
 import ezmj.online.VoiceClip;
 
 /**
- * 按住說話：按下開始錄音，放開送出；在按鈕外面放開就取消，錄滿 10 秒自動送出。
+ * 按住說話：按下開始錄音，放開就送出去廣播；在按鈕外面放開就取消，錄滿 10 秒自動送出。
  * 不到 0.3 秒的不送，告訴他要按住。按下去之前先看自己的頻率限制，和服務器的一樣，免得說完了才被拒絕。
  * 按鈕在 TablePanel，這裡只管錄音與送出，對應 Swing 版的同名類別。
  */
@@ -31,6 +31,8 @@ final class VoiceTalk {
     private boolean ready;
     private double readyAt;
     private int ticker = -1;
+    /** 房間裡有別的真人。沒有的話按下去只說明沒有人聽，不開麥克風。 */
+    private boolean audience = true;
 
     /** sender 收到壓好的語音，負責送出去。 */
     VoiceTalk(Consumer<byte[]> sender) {
@@ -45,9 +47,18 @@ final class VoiceTalk {
         return recorder != null;
     }
 
+    /** 有人補位上場或離開時，TablePanel 照房間的人更新。還在錄的照樣錄完。 */
+    void setAudience(boolean anyoneToHear) {
+        audience = anyoneToHear;
+    }
+
     /** 按下說話的按鈕。要在按下的當下呼叫，瀏覽器才會問要不要允許麥克風。 */
     void press() {
         if (recorder != null || view == null) {
+            return;
+        }
+        if (!audience) {
+            view.talkNotice(VoiceClip.NOBODY_TEXT);
             return;
         }
         long waitMs = limiter.waitMs((long) Browser.now());

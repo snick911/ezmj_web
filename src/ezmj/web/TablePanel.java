@@ -44,6 +44,8 @@ final class TablePanel {
     /** 牌桌上的公告停多久，例如有人補位上場；淡出和 style.css 的 .table-announce.leaving 一樣長。 */
     private static final int ANNOUNCE_MS = 8_000;
     private static final int ANNOUNCE_FADE_MS = 600;
+    /** 廣播出去的波紋播多久，比 style.css 的 .broadcast 兩圈加起來長一點。 */
+    private static final int BROADCAST_MS = 1_600;
 
     /** 動作列上的一個按鈕。translucent 的按鈕半透明，表示可以用但不一定要按。 */
     record ActionItem(String label, String color, Runnable run, boolean translucent, boolean flame) {
@@ -100,13 +102,18 @@ final class TablePanel {
     /** 聊天送出的地方；沒有聊天時是 null。 */
     private Consumer<String> chatSender;
     /**
-     * 按住說話：側欄聊天下面一顆，手機版面在牌桌的選單旁邊再一顆（側欄收著時按不到）。錄音中牌桌上自己那一側
-     * 亮一條紅色的提示，寫錄了幾秒，兩顆按鈕都看得到。房間裡沒有別的真人或服務器不會轉語音時藏起來。
+     * 按住說話：牌桌左下角一顆圓的按鈕，麥克風兩邊有廣播的波紋，放開就自動廣播給同桌的牌友。電腦版與手機直向在動作列的
+     * 左邊，手機橫向在自己手牌左上方、提示的左邊，見 style.css。錄音中按鈕變紅，牌桌上自己那一側亮一條提示寫錄了幾秒；
+     * 服務器回覆收到時按鈕往外擴散兩圈波紋。桌上沒有別的真人時按鈕變淡，按下去只說明沒有人聽。
+     * 不是連線牌局或服務器不會轉語音時藏起來。
      */
-    private final HTMLButtonElement talkSide = talkButton("btn talk-button");
-    private final HTMLButtonElement talkCorner = talkButton("btn talk-corner");
+    private final HTMLButtonElement talkButton = talkButton();
     private final HTMLElement talkIndicator = Dom.text("div", "talk-indicator", " ");
     private VoiceTalk talk;
+    private boolean talkRecording;
+    private boolean talkLonely;
+    private boolean talkBroadcast;
+    private int broadcastTimer = -1;
     /** 靜音的人（畫面座位加名字），他們的語音不自動播，也不跳泡泡；聊天區的按鈕跟著換字。 */
     private final Set<String> muted = new HashSet<>();
     private final Map<String, List<HTMLButtonElement>> muteButtons = new HashMap<>();
@@ -117,7 +124,6 @@ final class TablePanel {
         main.appendChild(canvas.element());
         // 手機直向時兩顆按鈕分在動作列左右上角，橫向時一起浮在牌桌右上角
         HTMLElement corner = Dom.el("div", "corner-buttons");
-        corner.appendChild(talkCorner);
         menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
         menu.setClassName("btn menu-button");
         corner.appendChild(menu);
@@ -129,6 +135,7 @@ final class TablePanel {
         actionBar.appendChild(corner);
         actionBar.appendChild(hint);
         actionBar.appendChild(actionButtons);
+        actionBar.appendChild(talkButton);
         main.appendChild(actionBar);
         canvas.setOverlay(actionBar);
         buildChatLayer();
@@ -309,7 +316,6 @@ final class TablePanel {
         input.appendChild(chatField);
         input.appendChild(Dom.button("送出", Theme.BUTTON, this::sendChat));
         chatBox.appendChild(input);
-        chatBox.appendChild(talkSide);
         Dom.visible(chatBox, false);
         return chatBox;
     }
@@ -318,10 +324,10 @@ final class TablePanel {
      * 按住說話的按鈕：按下開始錄、在按鈕上放開送出、移到外面放開取消。按下就抓住指標，手指滑出去放開也會通知這顆按鈕。
      * 用 Tab 移過來的話，按住空白鍵或 Enter 也可以。沒有 click 的動作，長按也不跳出選單。
      */
-    private HTMLButtonElement talkButton(String cssClass) {
-        HTMLButtonElement button = (HTMLButtonElement) Dom.text("button", cssClass, VoiceClip.TALK_LABEL);
+    private HTMLButtonElement talkButton() {
+        HTMLButtonElement button = (HTMLButtonElement) Dom.el("button", "btn talk-button");
         button.setType("button");
-        button.setAttribute("aria-label", VoiceClip.TALK_LABEL);
+        button.appendChild(talkIcon());
         button.addEventListener("pointerdown", event -> {
             event.preventDefault();
             Browser.capturePointer(button, event);
@@ -366,46 +372,93 @@ final class TablePanel {
         return button;
     }
 
-    /**
-     * 房間裡有別的真人、服務器也會轉語音時才有說話的按鈕，傳 null 就藏起來，還在錄的也丟掉。
-     * 跟電腦打的一人房間沒有人聽，所以沒有。
-     */
-    void setTalk(VoiceTalk voiceTalk) {
-        if (talk == voiceTalk) {
-            return;
-        }
-        if (talk != null) {
-            talk.stop();
-            talkState(VoiceClip.TALK_LABEL, false);
-        }
-        talk = voiceTalk;
-        if (talk != null) {
-            talk.attach(new VoiceTalk.View() {
-                @Override
-                public void talkState(String label, boolean recording) {
-                    TablePanel.this.talkState(label, recording);
-                }
+    /** 白色的麥克風，兩邊各兩道金色的波紋：說的話會廣播出去。線條與顏色在 style.css 的 .talk-icon。 */
+    private static HTMLElement talkIcon() {
+        HTMLElement icon = Dom.svg("svg", "talk-icon", "viewBox", "0 0 48 48", "aria-hidden", "true",
+                "focusable", "false");
+        icon.appendChild(Dom.svg("rect", "mic", "x", "19.5", "y", "8", "width", "9", "height", "17", "rx", "4.5"));
+        icon.appendChild(Dom.svg("path", "stand", "d", "M15 21a9 9 0 0 0 18 0M24 30v6M19 36h10"));
+        icon.appendChild(Dom.svg("path", "wave inner", "d", "M37 15a8 8 0 0 1 0 12M11 15a8 8 0 0 0 0 12"));
+        icon.appendChild(Dom.svg("path", "wave outer", "d", "M41.5 11a14 14 0 0 1 0 20M6.5 11a14 14 0 0 0 0 20"));
+        return icon;
+    }
 
-                @Override
-                public void talkNotice(String text) {
-                    showChatNotice(text);
-                }
-            });
+    /**
+     * 服務器會轉語音時才有說話的按鈕，傳 null 就藏起來，還在錄的也丟掉。anyoneToHear 是房間裡有別的真人，
+     * 沒有的話按鈕變淡，按下去只說明沒有人聽；有人補位上場或離開時會再呼叫一次。
+     */
+    void setTalk(VoiceTalk voiceTalk, boolean anyoneToHear) {
+        if (talk != voiceTalk) {
+            if (talk != null) {
+                talk.stop();
+                talkState(VoiceClip.TALK_LABEL, false);
+            }
+            talk = voiceTalk;
+            if (talk != null) {
+                talk.attach(new VoiceTalk.View() {
+                    @Override
+                    public void talkState(String label, boolean recording) {
+                        TablePanel.this.talkState(label, recording);
+                    }
+
+                    @Override
+                    public void talkNotice(String text) {
+                        showChatNotice(text);
+                    }
+                });
+            }
         }
-        Dom.visible(talkSide, talk != null);
-        Dom.visible(talkCorner, talk != null);
-        // 手機直向的提示要讓出牌桌上那顆按鈕的位置，見 style.css
+        if (talk != null) {
+            talk.setAudience(anyoneToHear);
+        }
+        talkLonely = !anyoneToHear;
+        refreshTalkButton();
+        Dom.visible(talkButton, talk != null);
+        // 動作列兩邊要讓出按鈕的位置，見 style.css
         root.setClassName(talk != null ? "table-screen has-talk" : "table-screen");
     }
 
-    /** 錄音中按鈕變紅，牌桌上自己那一側亮出錄了幾秒；牌桌上的按鈕窄，錄音中只寫「放開送出」。 */
+    /** 錄音中按鈕變紅，牌桌上自己那一側亮出錄了幾秒、放開就廣播。 */
     private void talkState(String label, boolean recording) {
-        talkSide.setInnerText(recording ? label : VoiceClip.TALK_LABEL);
-        talkCorner.setInnerText(recording ? "放開送出" : VoiceClip.TALK_LABEL);
-        talkSide.setClassName(recording ? "btn talk-button recording" : "btn talk-button");
-        talkCorner.setClassName(recording ? "btn talk-corner recording" : "btn talk-corner");
+        talkRecording = recording;
+        refreshTalkButton();
         talkIndicator.setInnerText(label);
         Dom.visible(talkIndicator, recording);
+    }
+
+    /** 按鈕的樣子照現在的狀態：錄音中、沒有人聽、剛廣播出去。滑鼠提示與報讀的字寫按了會怎樣。 */
+    private void refreshTalkButton() {
+        StringBuilder css = new StringBuilder("btn talk-button");
+        if (talkRecording) {
+            css.append(" recording");
+        }
+        if (talkLonely) {
+            css.append(" lonely");
+        }
+        if (talkBroadcast) {
+            css.append(" broadcast");
+        }
+        talkButton.setClassName(css.toString());
+        String tip = talkLonely ? VoiceClip.NOBODY_TEXT : VoiceClip.TALK_TIP;
+        talkButton.setAttribute("title", tip);
+        talkButton.setAttribute("aria-label", tip);
+    }
+
+    /** 服務器回覆收到了：按鈕往外擴散兩圈波紋。連著送的話從頭再播一次。 */
+    private void showBroadcast() {
+        if (broadcastTimer >= 0) {
+            Browser.cancelAfter(broadcastTimer);
+        }
+        talkBroadcast = false;
+        refreshTalkButton();
+        Browser.reflow(talkButton);
+        talkBroadcast = true;
+        refreshTalkButton();
+        broadcastTimer = Browser.after(BROADCAST_MS, () -> {
+            broadcastTimer = -1;
+            talkBroadcast = false;
+            refreshTalkButton();
+        });
     }
 
     /**
@@ -430,8 +483,11 @@ final class TablePanel {
         chatList.appendChild(line);
         chatList.setScrollTop(chatList.getScrollHeight());
         chatNotice.setInnerText(" ");
-        if (mine || !isMuted(muteKey)) {
-            showBubble(seat, mine ? "我" : name, VoiceClip.label(ms), mine ? "chat-bubble mine" : "chat-bubble");
+        if (mine) {
+            showBubble(seat, "我", VoiceClip.label(ms) + VoiceClip.BROADCAST_TEXT, "chat-bubble mine");
+            showBroadcast();
+        } else if (!isMuted(muteKey)) {
+            showBubble(seat, name, VoiceClip.label(ms), "chat-bubble");
         }
         if (!mine && !isMuted(muteKey) && !drawerOpen) {
             menu.setClassName("btn menu-button unread");

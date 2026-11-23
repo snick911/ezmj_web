@@ -78,7 +78,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 | `ShareDialog`、`GameReport`、`PdfWriter` | 牌局結束後的結果圖與輸贏歷程 PDF | 網頁版才有 |
 | `WaitingOverlay` | 等服務器回應時蓋住畫面的提示 | 網頁版才有 |
 | `SoundEffects`、`BackgroundMusic`、`MusicScores`、`VoiceLines` | 音效、音樂、語音與司儀 | 同名，錄好的曲子是 `RecordedMusic` |
-| `VoiceTalk`、`VoiceRecorder`、`VoicePlayer` | 玩家的語音訊息：按住說話、麥克風錄音、播放，見「玩家語音」 | `VoiceTalk`、`VoicePlayer` 同名，錄音在 `VoiceTalk` 裡 |
+| `VoiceTalk`、`VoiceRecorder`、`VoicePlayer` | 玩家的語音訊息：按住說話、麥克風錄音、播放，見「玩家語音」；左下角的按鈕在 `TablePanel` | `VoiceTalk`、`VoicePlayer` 同名，錄音在 `VoiceTalk` 裡；按鈕是 `TalkButton` |
 | `WebMusic` | 背景音樂的選項，見下面的「背景音樂」 | `model.MusicTrack` |
 | `WebSettings`、`WebProfile` | 存在瀏覽器裡的設定與上次的牌局 | `AppSettings`、`OnlineProfile` |
 | `Browser`、`Dom`、`AudioOut`、`GridTable`、`TileStrip` | 瀏覽器的小工具 | |
@@ -103,7 +103,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 - **聊天**：連線的牌桌都有，跟電腦打的一人房間也有，走牌局同一條連線的 `chat`。「紀錄」一律預設收起來，空出來的地方給聊天，收合按鈕是 CSS 畫的箭頭。服務器不補送斷線期間的訊息。說太快、太長或舊服務器不能聊天，顯示在聊天區，牌桌上自己那一側也跳一下。有不雅字眼的不送出，字留在輸入框；收到別人的由 `OnlineGame.parseChat` 把不雅字眼換成＊。`ezmjService` 0.9.0 起服務器也擋，回 `badChat`。
   - 牌桌上的泡泡蓋在畫布上，位置由 `TableCanvas.syncChatAnchors` 寫在 CSS 變數 `--chat-x0` 到 `--chat-y3`，和 `--hint-*` 一樣用 `style.setProperty`。
   - 在牌桌上按 Enter 跳出輸入框。按鍵聽整頁的，牌桌換掉之後第一次按鍵時拿掉；游標在輸入框、按鈕或連結上、有 `.backdrop` 或 `.waiting` 蓋著，或輸入法還在選字時不搶。
-- **玩家語音**：按住說話、放開送出的語音訊息，要 `ezmjService` 0.14.0，見下面的「玩家語音」。
+- **玩家語音**：牌桌左下角的麥克風按鈕，按住說話、放開就自動廣播的語音訊息，要 `ezmjService` 0.14.0，見下面的「玩家語音」。
 - **擲骰子與牌牆**：照 Swing 版，規則與時間見 `ezmj` README 的「擲骰子與牌牆」。牌牆在服務器上照真的牌桌疊好、擲骰子開門，服務器在 `roundStart` 與 `state` 送 `dice`，`OnlineGame.dice` 用它，畫面上的開門處就是服務器真的拿牌的地方，和同桌的 Swing 版一樣。0.12.0 和更早的服務器沒有送，才從房號、莊家、圈風、局風與連莊數算；`AllTests` 兩種都比對，算法改了要和 `ezmj` 的 `OnlineTest` 一起改。骰子加發牌約 2.4 秒，要在 `roundStart` 的 `dealMs`（3 秒）之內。
 - **聽牌**（程式與協定叫報聽，畫面上一律寫「聽牌」，紀錄裡 `OnlineGame.describe` 的「報聽」也換掉）：照 Swing 版的單機牌局。
   - 跟電腦打與多人的房間都在打牌之前聽牌：`askTurn` 的 `readyDiscards` 有東西時，動作列多一個半透明的「聽牌」（平常 50% 不透明，滑鼠移上去才不透明，不閃）。按了打出去會聽牌的牌加上金框、其他蓋起來，提示列出打哪張聽哪些牌；點一張就送 `listen`（打出並報聽），「取消」回到一般打牌。沒按就打出去的，服務器照樣送 `canListen`，網頁不理。
@@ -147,10 +147,11 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 
 ## 玩家語音
 
-牌桌上按住說話、放開送出，經過服務器轉給同桌的真人，和 Swing 版一樣。不做即時通話：要 WebRTC 與付費的中繼伺服器，Swing 版也做不到。協定見服務器 README 的「語音」。
+牌桌上按住說話、放開就自動廣播，經過服務器轉給同桌的真人，和 Swing 版一樣。不做即時通話：要 WebRTC 與付費的中繼伺服器，Swing 版也做不到。協定見服務器 README 的「語音」。
 
-- **什麼時候有**：`welcome` 的 `features` 有 `voice`（`ezmjService` 0.14.0 起），而且房間裡有別的真人（`VoiceClip.anyoneToHear`），跟電腦打的一人房間沒有。有人補位上場或離開時，收到 `room` 就重新看一次。`createRoom` 與 `joinRoom` 的 `supports` 帶 `voice`，服務器才把別人的語音轉過來。
-- **按鈕**：側欄聊天下面一顆「按住說話」；手機版面在牌桌的選單左邊再一顆（`.talk-corner`，橫向時和選單、全螢幕排在右上角），側欄收著時也按得到，直向時提示右邊讓出它的寬度（`.has-talk`）。按下就 `setPointerCapture`，在按鈕上放開送出、移到外面放開取消；`touch-action: none`，不讓瀏覽器拿去捲動或跳出長按選單。用 Tab 移過來的話按住空白鍵或 Enter 也可以。錄音中按鈕變紅，牌桌上自己那一側亮出「錄音中 N 秒，放開送出」（`.talk-indicator`），手機的按鈕窄，只寫「放開送出」。
+- **什麼時候有**：`welcome` 的 `features` 有 `voice`（`ezmjService` 0.14.0 起）的連線牌局都有按鈕，跟電腦打的一人房間也有，看得到這個功能。房間裡沒有別的真人連著線（`VoiceClip.anyoneToHear`：開打後斷線或離開的座位照樣算真人，但服務器轉不到，所以不算）時按鈕變淡（`.lonely`），按下去只在自己這一側說「桌上沒有別的真人玩家，語音沒有人聽得到」，不開麥克風。有人補位上場、斷線、接回或離開時服務器都會送 `room`，收到就重新看一次。`createRoom` 與 `joinRoom` 的 `supports` 帶 `voice`，服務器才把別人的語音轉過來。
+- **按鈕**（`.talk-button`）：牌桌左下角一顆圓的按鈕，白色的麥克風兩邊各兩道金色的波紋，看得出放開就廣播出去。圖示是程式裡寫死的 SVG（`TablePanel.talkIcon`，用 `Dom.svg` 的 `createElementNS` 建，不用 `innerHTML`），Swing 版的 `TalkButton` 照同樣的座標畫。電腦版在動作列左邊那欄、上下置中；手機直向貼在動作列左下角、全螢幕的下面；橫向在自己手牌左上方、提示的左邊，提示往右讓出它的寬度。有按鈕時動作列左右兩欄至少留它的寬度（`.has-talk`），吃碰槓胡照樣置中，放不下就往下折。按下就 `setPointerCapture`，在按鈕上放開送出、移到外面放開取消；`touch-action: none`，不讓瀏覽器拿去捲動或跳出長按選單。用 Tab 移過來的話按住空白鍵或 Enter 也可以。滑鼠提示與報讀寫「按住說話，放開就自動廣播給同桌的牌友」。
+- **錄音中與廣播出去**：錄音中按鈕變紅、外框一明一暗、波紋一閃一閃，牌桌上自己那一側亮出「錄音中 N 秒，放開就廣播」（`.talk-indicator`）。服務器回覆收到時按鈕往外擴散兩圈金色的波紋（`.broadcast`，連著送從頭再播，`Browser.reflow`），自己這一側的泡泡寫「〔語音 1.7 秒〕已廣播給牌友」。系統設定減少動態時都不動。
 - **錄音**（`VoiceRecorder`）：`getUserMedia` 打開回音消除、降噪與自動增益，牌桌的音樂與喊牌不會錄進去；`ScriptProcessorNode` 一段一段收，接到音量 0 的 `GainNode` 才會動，喇叭不出聲。每次錄完就把麥克風的 track 停掉，分頁上不會一直亮著正在用麥克風。`ScriptProcessorNode` 不建議用了，但每個瀏覽器都還支援；換成 `AudioWorklet` 要另外放一個 JS 檔，CSP 的 `script-src 'self'` 允許。CSP 不管麥克風，GitHub Pages 是 https 才拿得到。
 - **送出**（`VoiceTalk`）：不到 0.3 秒、移到外面放開都不送；錄滿 10 秒自動送出。按下去之前先看自己的頻率限制（每 30 秒 3 則，和服務器一樣），擋下來就不開麥克風。壓縮用 `ezmj` 的 `VoiceClip`：降到 8 kHz、太小聲的放大，再壓成 IMA ADPCM，一秒 4 KB，和 Swing 版一樣，不用瀏覽器的錄音格式。斷線中不送，說一聲。
 - **自己送的**：服務器回一則沒有聲音、只有長度的 `voice`，聊天區的那一行用送出時留著的那份重播。`badVoice`、`voiceTooFast` 拿掉最早那份。斷線時全部丟掉，回覆對不上了。

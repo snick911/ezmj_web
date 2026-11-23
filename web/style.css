@@ -390,6 +390,8 @@ h1, h2, h3, p { margin: 0; }
     min-height: 0;
     text-align: right;
   }
+  /* 左邊那欄還有說話的按鈕，提示從按鈕右邊開始 */
+  .table-screen.has-talk .action-bar.flaming .hint { padding: 0 0 0 5rem; }
 }
 /* 吃碰槓胡：比一般按鈕大很多，金框加光暈，一眼就看得到、手指也好按；胡與自摸再閃動 */
 .claim-button {
@@ -495,29 +497,81 @@ h1, h2, h3, p { margin: 0; }
 .chat-field { flex: 1; min-width: 0; width: auto; }
 .chat-input .btn { --pad-y: .25rem; --pad-x: .7rem; flex: 0 0 auto; }
 /*
- * 按住說話：側欄聊天下面一顆，手機版面在牌桌的選單旁邊再一顆（見下面的手機版面）。按著不放要能拖出去取消，
- * 所以不讓瀏覽器拿去捲動、選字或跳出長按選單。錄音中變紅、外框一明一暗。
+ * 按住說話：牌桌左下角一顆圓的按鈕，白色的麥克風兩邊各兩道金色的波紋，看得出放開就廣播出去。
+ * 電腦版在動作列左邊那欄、上下置中；手機直向貼在動作列左下角，橫向在提示的左邊（見下面的手機版面）。
+ * 按著不放要能拖出去取消，所以不讓瀏覽器拿去捲動、選字或跳出長按選單。
+ * 錄音中變紅、波紋一閃一閃；服務器回覆收到時往外擴散兩圈金色的波紋（.broadcast）；桌上沒有別的真人時變淡（.lonely）。
  */
-.talk-button, .talk-corner {
+/* 留白直接寫 0：手機版面的 .btn 會把 --pad-x 改回 .8rem，圖示就被擠小了 */
+.talk-button {
+  align-items: center;
+  align-self: center;
+  background-color: #2C6E58;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  box-shadow: var(--btn-line), 0 .15rem .5rem rgba(0, 0, 0, .45);
+  display: flex;
+  grid-column: 1;
+  grid-row: 1 / 3;
+  height: 4.4rem;
+  justify-content: center;
+  justify-self: start;
+  padding: 0;
+  position: relative;
   touch-action: none;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+  width: 4.4rem;
 }
-.talk-button, .talk-corner { background-color: #2C6E58; }
-.talk-button { --pad-y: .35rem; width: 100%; }
-.talk-corner { display: none; }
-.talk-button.recording, .talk-corner.recording {
+.talk-icon {
+  fill: none;
+  height: 80%;
+  overflow: visible;
+  pointer-events: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  width: 80%;
+}
+.talk-icon .mic { fill: currentColor; stroke: none; }
+.talk-icon .stand { stroke-width: 2.8; }
+.talk-icon .wave { stroke: var(--gold); stroke-width: 3; }
+.talk-button.recording {
   animation: talk-pulse 1s ease-in-out infinite;
   background-color: #C93A32;
+  border-color: #FFD9D4;
 }
+.talk-button.recording .wave { animation: wave-blink 1s ease-in-out infinite; stroke: #FFF; }
+.talk-button.recording .wave.outer { animation-delay: .25s; }
+.talk-button.lonely { opacity: .45; }
+.talk-button::before, .talk-button::after {
+  border: 3px solid var(--gold);
+  border-radius: 50%;
+  content: "";
+  inset: -2px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+}
+.talk-button.broadcast::before { animation: broadcast-ring 1.1s ease-out; }
+.talk-button.broadcast::after { animation: broadcast-ring 1.1s ease-out .35s; }
 @keyframes talk-pulse {
-  50% { box-shadow: var(--btn-line), 0 0 .8rem rgba(229, 72, 61, .9); }
+  50% { box-shadow: var(--btn-line), 0 0 1rem rgba(229, 72, 61, .95); }
+}
+@keyframes wave-blink {
+  50% { opacity: .2; }
+}
+@keyframes broadcast-ring {
+  from { opacity: .95; transform: scale(1); }
+  to { opacity: 0; transform: scale(2); }
 }
 @keyframes talk-glow {
   50% { box-shadow: 0 0 .9rem rgba(229, 72, 61, .9); }
 }
-/* 錄音中蓋在牌桌上、自己那一側的上面：錄了幾秒、放開送出。點擊會穿過去 */
+/* 有說話的按鈕時，動作列左右兩欄至少留它的寬度，吃碰槓胡照樣置中、放不下就往下折；提示也不壓到按鈕 */
+.table-screen.has-talk .action-bar { grid-template-columns: minmax(5rem, 1fr) auto minmax(5rem, 1fr); }
+.table-screen.has-talk .hint { padding: 0 5rem; }
+/* 錄音中蓋在牌桌上、自己那一側的上面：錄了幾秒、放開就廣播。點擊會穿過去 */
 .talk-indicator {
   animation: talk-glow 1s ease-in-out infinite;
   background: rgba(120, 20, 16, .92);
@@ -534,7 +588,8 @@ h1, h2, h3, p { margin: 0; }
   white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
-  .talk-button.recording, .talk-corner.recording, .talk-indicator { animation: none; }
+  .talk-button.recording, .talk-button.recording .wave, .talk-indicator { animation: none; }
+  .talk-button.broadcast::before, .talk-button.broadcast::after { animation: none; }
 }
 /* 聊天區的一則語音：長度後面是重播，別人的再一顆靜音 */
 .voice-label { color: var(--gold); }
@@ -784,10 +839,22 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   .action-bar { min-height: 7rem; padding: .3rem .4rem .4rem; position: relative; }
   .menu-button { position: absolute; right: .4rem; top: .3rem; }
   .fullscreen-button { left: .4rem; position: absolute; top: .3rem; }
-  /* 說話的按鈕在選單左邊，側欄收著時也按得到；提示的右邊多留它的寬度 */
-  .talk-corner { display: block; position: absolute; right: 4.6rem; top: .3rem; }
   .hint { min-height: 2.7rem; padding: 0 4.6rem; }
-  .table-screen.has-talk .hint { padding-right: 10.4rem; }
+  .table-screen.has-talk .hint { padding: 0 4.6rem; }
+  /*
+   * 說話的按鈕貼在動作列左下角、全螢幕的下面；兩邊的欄留它的寬度。
+   * 絕對定位的格線子元素有指定欄列的話，會對齊那一格而不是整個動作列，所以欄列改回 auto。
+   */
+  .talk-button {
+    bottom: .4rem;
+    grid-column: auto;
+    grid-row: auto;
+    height: 3.3rem;
+    left: .4rem;
+    position: absolute;
+    width: 3.3rem;
+  }
+  .table-screen.has-talk .action-bar { grid-template-columns: minmax(3.8rem, 1fr) auto minmax(3.8rem, 1fr); }
   .action-buttons { gap: .4rem; }
   .claim-button { --pad-y: .45rem; --pad-x: 1.2rem; font-size: 1.65rem; min-width: 5.6rem; }
 
@@ -842,7 +909,7 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   }
   .corner-buttons { display: flex; gap: .35rem; position: absolute; right: .4rem; top: .3rem; }
   /* relative 讓新聊天的紅點有地方對齊 */
-  .menu-button, .fullscreen-button, .talk-corner {
+  .menu-button, .fullscreen-button {
     --pad-y: .2rem;
     --pad-x: .65rem;
     font-size: .8rem;
@@ -867,8 +934,19 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
     width: var(--hint-width);
   }
   .hint.prompt { font-size: .95rem; }
-  /* 說話的按鈕和選單一起在右上角，提示不用讓位置 */
-  .table-screen.has-talk .hint { padding: 0; }
+  /* 說話的按鈕在提示的左邊、底部對齊，提示往右讓出它的寬度 */
+  .talk-button {
+    bottom: var(--hint-bottom);
+    height: 2.9rem;
+    left: var(--hint-left);
+    pointer-events: auto;
+    width: 2.9rem;
+  }
+  .table-screen.has-talk .hint {
+    left: calc(var(--hint-left) + 3.4rem);
+    padding: 0;
+    width: max(4rem, calc(var(--hint-width) - 3.4rem));
+  }
   /* 按鈕靠右下，一排放不下時往上多一排 */
   .action-buttons {
     align-items: flex-end;

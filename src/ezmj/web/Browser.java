@@ -40,6 +40,10 @@ final class Browser {
         Window.clearInterval(id);
     }
 
+    /** 讓瀏覽器馬上排版一次。拿掉 class 再加回去之前先呼叫，CSS 動畫才會從頭播。 */
+    @JSBody(params = "element", script = "void element.offsetWidth;")
+    static native void reflow(HTMLElement element);
+
     @JSBody(params = "key", script = "try { return localStorage.getItem(key); } catch (e) { return null; }")
     static native String load(String key);
 

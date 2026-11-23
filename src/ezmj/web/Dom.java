@@ -58,6 +58,22 @@ final class Dom {
         element.getStyle().setProperty("display", visible ? "" : "none");
     }
 
+    /**
+     * SVG 圖示的元素，attributes 是一對一對的名稱與值。要用 createElementNS 建，class 也要用屬性設；
+     * 一樣不用 innerHTML，圖形都是程式裡寫死的。
+     */
+    static HTMLElement svg(String tag, String cssClass, String... attributes) {
+        HTMLElement element = createSvg(tag);
+        element.setAttribute("class", cssClass);
+        for (int i = 0; i + 1 < attributes.length; i += 2) {
+            element.setAttribute(attributes[i], attributes[i + 1]);
+        }
+        return element;
+    }
+
+    @JSBody(params = "tag", script = "return document.createElementNS('http://www.w3.org/2000/svg', tag);")
+    private static native HTMLElement createSvg(String tag);
+
     @JSBody(params = "element", script = "element.focus({preventScroll: true});")
     static native void focusWithoutScroll(HTMLElement element);
 

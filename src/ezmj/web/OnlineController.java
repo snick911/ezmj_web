@@ -243,7 +243,7 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
         // 還在錄的丟掉；送出去還沒回覆的，服務器不一定收到，回覆也對不上了
         talk.stop();
         if (view != null) {
-            view.setTalk(null);
+            view.setTalk(null, false);
         }
         sentVoices.clear();
         // 重連後服務器會再送房間，已經開局的話就直接換成牌桌
@@ -425,8 +425,8 @@ final class OnlineController implements OnlineClient.Listener, TablePresenter.Ta
             if (roundBound) {
                 view.refresh(game, game);
             }
-            // 有人補位上場或離開，說話的按鈕跟著出現或藏起來
-            view.setTalk(voiceServer && VoiceClip.anyoneToHear(info) ? talk : null);
+            // 有人補位上場或離開，說話的按鈕跟著變亮或變淡
+            view.setTalk(voiceServer ? talk : null, VoiceClip.anyoneToHear(info));
         } else if (!finishing) {
             closeTable();
             showRoom();
