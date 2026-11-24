@@ -9,6 +9,14 @@
   --gold: #E8C05A;
   --font-scale: 1;
   font-size: calc(16px * var(--font-scale));
+  /*
+   * 瀏海、動態島、圓角與底部的橫條要讓開的寬度。index.html 寫了 viewport-fit=cover，iPhone 加入主畫面後用滿整個螢幕，
+   * 狀態列也蓋在網頁上，這時上下都有；Safari 分頁裡只有橫向的左右兩邊有。電腦與沒有瀏海的手機都是 0。
+   */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 * { box-sizing: border-box; }
@@ -18,10 +26,11 @@ html, body {
   margin: 0;
 }
 
-/* 手機的網址列會伸縮，dvh 才是真正看得到的高度，舊瀏覽器退回 100%。 */
+/* 手機的網址列會伸縮，dvh 才是真正看得到的高度，舊瀏覽器退回 100%。四周讓開瀏海與橫條，露出底下的 body 底色。 */
 #app {
   height: 100%;
   height: 100dvh;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 
 body {
@@ -109,20 +118,21 @@ h1, h2, h3, p { margin: 0; }
 .dialog-text { max-width: 28rem; white-space: pre-line; }
 .button-row { display: flex; flex-wrap: wrap; gap: .6rem; }
 
-/* 蓋在畫面上的視窗 */
+/* 蓋在畫面上的視窗，和 #app 一樣讓開瀏海與橫條 */
 .backdrop {
   align-items: center;
   background: rgba(0, 0, 0, .45);
   display: flex;
   inset: 0;
   justify-content: center;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   position: fixed;
   z-index: 10;
 }
 .floating {
   left: 50%;
   position: fixed;
-  top: 1rem;
+  top: calc(1rem + var(--safe-top));
   transform: translateX(-50%);
   z-index: 20;
 }
@@ -135,6 +145,7 @@ h1, h2, h3, p { margin: 0; }
   display: flex;
   inset: 0;
   justify-content: center;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   position: fixed;
   z-index: 15;
 }
@@ -430,7 +441,11 @@ h1, h2, h3, p { margin: 0; }
   z-index: 0;
 }
 .flame-canvas.front { z-index: 2; }
-.hint { position: relative; z-index: 3; }
+/*
+ * 提示蓋在火焰上面，但只是字，點擊要穿過去：手機直向時它橫跨整個動作列的第一行，0.17.0 到 0.20.1 把左右上角的
+ * 「全螢幕」與「選單」蓋住，兩顆都按不到。
+ */
+.hint { pointer-events: none; position: relative; z-index: 3; }
 .sidebar {
   background: var(--panel);
   display: flex;
@@ -794,14 +809,14 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   .card {
     gap: .5rem;
     max-height: calc(100vh - 1rem);
-    max-height: calc(100dvh - 1rem);
-    max-width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 1rem - var(--safe-top) - var(--safe-bottom));
+    max-width: calc(100vw - 1rem - var(--safe-left) - var(--safe-right));
     padding: .7rem .8rem;
   }
   .title { font-size: 1.45rem; }
   .headline { font-size: 1.2rem; }
   .form-screen { padding: .5rem; }
-  .lobby-card { max-height: calc(100vh - 1rem); max-height: calc(100dvh - 1rem); }
+  .lobby-card { max-height: calc(100vh - 1rem); max-height: calc(100dvh - 1rem - var(--safe-top) - var(--safe-bottom)); }
   .start-buttons .btn { padding: .5rem .8rem; }
   /* iOS 碰到小於 16px 的輸入框會自動放大畫面 */
   .field { font-size: 16px; }
@@ -812,15 +827,17 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   .room-list th { padding: .35rem .45rem; }
   .room-list td { padding: .5rem .45rem; }
 
+  /* 滑出來的側欄貼著螢幕右邊，要自己讓開瀏海與橫條 */
   .sidebar {
     bottom: 0;
     overflow-y: auto;
+    padding: calc(.875rem + var(--safe-top)) calc(.875rem + var(--safe-right)) calc(.875rem + var(--safe-bottom)) .875rem;
     position: fixed;
     right: 0;
     top: 0;
     transform: translateX(100%);
     transition: transform .18s ease-out;
-    width: min(19rem, 85vw);
+    width: calc(min(19rem, 85vw) + var(--safe-right));
     z-index: 5;
   }
   .sidebar.open { transform: none; }
@@ -859,11 +876,16 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   .claim-button { --pad-y: .45rem; --pad-x: 1.2rem; font-size: 1.65rem; min-width: 5.6rem; }
 
   /* 視窗 */
-  .floating { left: .5rem; right: .5rem; top: .5rem; transform: none; }
+  .floating {
+    left: calc(.5rem + var(--safe-left));
+    right: calc(.5rem + var(--safe-right));
+    top: calc(.5rem + var(--safe-top));
+    transform: none;
+  }
   .help-card, .result-card { width: auto; }
   /* 歷程的欄位多，視窗不超過螢幕，表格自己左右捲動 */
   .history-card { margin: 0 auto; width: fit-content; }
-  .help-card { height: calc(100vh - 1rem); height: calc(100dvh - 1rem); }
+  .help-card { height: calc(100vh - 1rem); height: calc(100dvh - 1rem - var(--safe-top) - var(--safe-bottom)); }
   .history-scroll { overflow: auto; }
   .backdrop .result-card { width: 100%; }
   /* 視窗要捲動時，下一局的按鈕固定在底部，不用捲也按得到 */

@@ -22,6 +22,8 @@ public final class DevServer {
             "woff2", "font/woff2",
             "txt", "text/plain; charset=utf-8",
             "svg", "image/svg+xml",
+            "png", "image/png",
+            "webmanifest", "application/manifest+json",
             "mp3", "audio/mpeg");
 
     public static void main(String[] args) throws IOException {

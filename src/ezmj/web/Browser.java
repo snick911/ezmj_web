@@ -77,26 +77,42 @@ final class Browser {
             + " new ResizeObserver(function () { action(); }).observe(element); }")
     static native void onResize(HTMLElement element, Callback action);
 
-    /** iPhone 的 Safari 只有影片能全螢幕，所以沒有這個功能。放在不准全螢幕的 iframe 裡也是。 */
-    @JSBody(script = "return !!document.fullscreenEnabled;")
+    /**
+     * 網頁能不能全螢幕。iPad 的 Safari 16.4 以前只有 webkit 開頭的版本，一起看。iPhone 的 Safari 只有影片能全螢幕，
+     * 所以是 false，要改用加入主畫面，見 canAddToHomeScreen。放在不准全螢幕的 iframe 裡也是 false。
+     */
+    @JSBody(script = "var d = document, root = d.documentElement;"
+            + "return !!((d.fullscreenEnabled && root.requestFullscreen) || (d.webkitFullscreenEnabled && root.webkitRequestFullscreen));")
     static native boolean canFullscreen();
 
-    /** 再按一次或用手機的返回鍵離開。做不到就維持原樣。 */
-    @JSBody(script = "var change = document.fullscreenElement ? document.exitFullscreen()"
-            + " : document.documentElement.requestFullscreen();"
-            + "change.catch(function (e) { console.warn('不能切換全螢幕：' + e.message); });")
+    /** 再按一次或用手機的返回鍵離開。做不到就維持原樣。webkit 開頭的版本不回傳 Promise。 */
+    @JSBody(script = "var d = document, root = d.documentElement;"
+            + "var change = (d.fullscreenElement || d.webkitFullscreenElement)"
+            + " ? (d.exitFullscreen ? d.exitFullscreen() : d.webkitExitFullscreen())"
+            + " : (root.requestFullscreen ? root.requestFullscreen() : root.webkitRequestFullscreen());"
+            + "if (change && change.catch) { change.catch(function (e) { console.warn('不能切換全螢幕：' + e.message); }); }")
     static native void toggleFullscreen();
+
+    /**
+     * iPhone 上的瀏覽器（都是 Safari 的核心）不能全螢幕，但可以「加入主畫面」，從主畫面的圖示打開就沒有網址列與工具列，
+     * 設定在 index.html 與 manifest.webmanifest。已經是從主畫面打開的（standalone）就不用再提。
+     */
+    @JSBody(script = "return /iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone"
+            + " && !window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;")
+    static native boolean canAddToHomeScreen();
 
     /**
      * 手機進入牌局時先切到全螢幕，牌桌才夠大。瀏覽器只准在使用者點按的當下切換，所以要在開局、加入、接回這些按鈕的
      * 處理裡直接呼叫。已經是全螢幕、不是手機（電腦開窄視窗、觸控筆電）或不支援（iPhone 的 Safari）就不動；
      * 被拒絕就維持原樣，牌桌的「全螢幕」按鈕照舊能用。手機的條件是手指操作加上手機版面，版面的條件和 isCompact 一樣。
      */
-    @JSBody(script = "if (!document.fullscreenEnabled || document.fullscreenElement) { return; }"
+    @JSBody(script = "var d = document, root = d.documentElement;"
+            + "if (!((d.fullscreenEnabled && root.requestFullscreen) || (d.webkitFullscreenEnabled && root.webkitRequestFullscreen))"
+            + " || d.fullscreenElement || d.webkitFullscreenElement) { return; }"
             + "if (!window.matchMedia('(pointer: coarse)').matches"
             + " || !window.matchMedia('(max-width: 900px), (max-height: 560px)').matches) { return; }"
-            + "document.documentElement.requestFullscreen()"
-            + ".catch(function (e) { console.warn('不能切換全螢幕：' + e.message); });")
+            + "var change = root.requestFullscreen ? root.requestFullscreen() : root.webkitRequestFullscreen();"
+            + "if (change && change.catch) { change.catch(function (e) { console.warn('不能切換全螢幕：' + e.message); }); }")
     static native void fullscreenOnPhone();
 
     /**

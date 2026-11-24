@@ -46,6 +46,15 @@ final class TablePanel {
     private static final int ANNOUNCE_FADE_MS = 600;
     /** 廣播出去的波紋播多久，比 style.css 的 .broadcast 兩圈加起來長一點。 */
     private static final int BROADCAST_MS = 1_600;
+    /**
+     * iPhone 按「全螢幕」時的說明。iPhone 上的瀏覽器只有影片能全螢幕，加入主畫面再從圖示打開才沒有網址列與工具列。
+     * 主畫面打開的和瀏覽器裡的分開存，名字、設定與接回牌局的資料都不共用。
+     */
+    static final String HOME_SCREEN_TIP = "iPhone 的瀏覽器不能讓網頁全螢幕，請改用「加入主畫面」：\n"
+            + "1. 點瀏覽器的「分享」（方框加向上的箭頭；找不到就先點「⋯」）。\n"
+            + "2. 選「加入主畫面」，再按「加入」。\n"
+            + "3. 之後從主畫面的 EZMJ 圖示打開，就沒有網址列與工具列。\n\n"
+            + "從主畫面打開的和瀏覽器裡的分開存，名字與環境設定要再設一次；這一場請先在這裡打完再換過去。";
 
     /** 動作列上的一個按鈕。translucent 的按鈕半透明，表示可以用但不一定要按。 */
     record ActionItem(String label, String color, Runnable run, boolean translucent, boolean flame) {
@@ -127,8 +136,11 @@ final class TablePanel {
         menu = Dom.button("選單", Theme.PANEL_LIGHT, () -> showDrawer(true));
         menu.setClassName("btn menu-button");
         corner.appendChild(menu);
-        if (Browser.canFullscreen()) {
-            HTMLElement fullscreen = Dom.button("全螢幕", Theme.PANEL_LIGHT, Browser::toggleFullscreen);
+        // iPhone 不能全螢幕，同一個位置的按鈕改成教怎麼加入主畫面
+        Runnable fullscreenAction = Browser.canFullscreen() ? Browser::toggleFullscreen
+                : Browser.canAddToHomeScreen() ? () -> Dialog.message(HOME_SCREEN_TIP) : null;
+        if (fullscreenAction != null) {
+            HTMLElement fullscreen = Dom.button("全螢幕", Theme.PANEL_LIGHT, fullscreenAction);
             fullscreen.setClassName("btn fullscreen-button");
             corner.appendChild(fullscreen);
         }

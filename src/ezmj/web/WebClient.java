@@ -2,6 +2,7 @@ package ezmj.web;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.function.Consumer;
 
 import org.teavm.jso.dom.events.MessageEvent;
@@ -11,11 +12,14 @@ import ezmj.online.Json;
 import ezmj.online.OnlineClient;
 import ezmj.online.RoomListing;
 import ezmj.online.RoomSettings;
+import ezmj.online.Wire;
 import ezmj.model.Tile;
 
 /**
  * 到 EZMJ Server 的連線，對應 Swing 版的 OnlineClient，時間設定也一樣。
  * 這裡只管連線：登入、閒置時送 ping、保存 token、斷線後自己重連。訊息內容交給上層看。
+ *
+ * 收發的都是 ezmj 的 Wire 加密過的 JSON，開發者工具的 Network 裡只看得到一串亂碼。收到沒加密的 JSON 也看得懂，那是舊的服務器。
  *
  * 瀏覽器會放慢背景分頁的計時器，所以收到訊息時也順便檢查該不該送 ping：
  * 訊息事件不會被放慢，牌局進行中服務器一直有訊息，就不會因為計時器太慢被踢掉。
@@ -37,6 +41,8 @@ final class WebClient {
      */
     static final int FIRST_CONNECT_FOR_MS = 120_000;
     private static final int CHECK_MS = 5_000;
+    /** Wire 的 nonce。TeaVM 的 Random 用 Math.random 當種子，每次開網頁都不一樣。 */
+    private static final Random RANDOM = new Random();
 
     private final String url;
     private final OnlineClient.Listener listener;
@@ -186,7 +192,7 @@ final class WebClient {
     /** 斷線中就丟掉：服務器牌局不等人，接回來時會補送還在等的詢問。 */
     private void send(Map<String, Object> message) {
         if (socket != null && opened) {
-            socket.send(Json.write(message));
+            socket.send(Wire.encode(Json.write(message), RANDOM));
             lastSent = Browser.now();
         }
     }
@@ -352,7 +358,7 @@ final class WebClient {
         }
         Map<String, Object> message;
         try {
-            Object parsed = Json.parse(line);
+            Object parsed = Json.parse(Wire.read(line));
             if (!(parsed instanceof Map)) {
                 throw new IllegalArgumentException("訊息要是 JSON 物件");
             }

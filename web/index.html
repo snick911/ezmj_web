@@ -2,14 +2,23 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover：加入主畫面後用滿整個螢幕，瀏海、動態島與底部的橫條由 style.css 的 safe-area 讓開 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="ezmj-version" content="${project.version}">
+<!-- iPhone 的 Safari 不能全螢幕，加入主畫面再從圖示打開就沒有網址列與工具列 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EZMJ">
+<meta name="theme-color" content="#0B3B2C">
 <!-- EZMJ Web © 2026 snick911。授權是 AGPL-3.0-only，另有商業授權。 -->
 <link rel="license" href="https://www.gnu.org/licenses/agpl-3.0.html">
-<!-- token 存在瀏覽器裡，只准執行這個網站自己的程式，也只准連服務器與這個網站自己（下載錄好的背景音樂）。ws://localhost 是測試用的。 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self' wss://ezmj-server.onrender.com ws://localhost:* ws://127.0.0.1:*; base-uri 'none'; form-action 'none'">
+<!-- token 存在瀏覽器裡，只准執行這個網站自己的程式，也只准連服務器與這個網站自己（下載錄好的背景音樂）。ws://localhost 是測試用的。manifest 是加入主畫面用的。 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; manifest-src 'self'; connect-src 'self' wss://ezmj-server.onrender.com ws://localhost:* ws://127.0.0.1:*; base-uri 'none'; form-action 'none'">
 <title>EZMJ 台灣十六張麻將</title>
 <link rel="icon" href="favicon.svg?v=${project.version}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="style.css?v=${project.version}">
 </head>
 <body>

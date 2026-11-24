@@ -65,7 +65,7 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 | 類別 | 職責 | 對應的 Swing 類別 |
 |---|---|---|
 | `Main` | 進入點，切換畫面 | `MainFrame` |
-| `WebClient`、`Messages` | 連線、ping、重連；組訊息 | `OnlineClient` |
+| `WebClient`、`Messages` | 連線、ping、重連、加密（`online.Wire`）；組訊息 | `OnlineClient` |
 | `OnlineController` | 把服務器的訊息演到畫面上 | 同名 |
 | `TablePresenter` | 動畫、音效、語音、動作列與選牌 | 同名 |
 | `TablePanel`、`TableCanvas` | 牌桌主畫面；用 Canvas 畫的牌桌與動畫 | 同名 |
@@ -164,8 +164,11 @@ java -jar ..\ezmjService\dist\ezmj-server-<版號>.jar 7788
 
 token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束就清掉。所以：
 
+- 連線上的訊息都加密：`WebClient` 送出前用 `ezmj` 的 `online.Wire` 把 JSON 用 ChaCha20 加密再轉 base64，收到的也先解開，開發者工具的 Network 裡只看得到一串亂碼，看不出打了哪張牌、誰在聽牌、聊了什麼。nonce 用 `java.util.Random`（TeaVM 拿 `Math.random` 當種子），每則都不一樣。收到以 `{` 開頭的是沒加密的 JSON（舊的服務器），照樣看得懂。格式與限制見服務器 README 的「連線協定」。
+  - 金鑰寫在 `ezmj.js` 裡、原始碼也公開，所以這只是不讓一般人一看就懂，擋不住有心拆程式的人。別人的手牌與牌牆服務器本來就不送；專家模式藏起來的棄牌是網頁自己藏的，服務器照樣送，所以拆得開的人看得到。
+  - 服務器要 `ezmjService` 0.15.0 才看得懂加密的訊息。部署時先換服務器，再 push 網頁。
 - 文字一律用 `innerText`，不要用 `innerHTML`，玩家的名字來自網路。
-- `index.html` 的 CSP 只准執行網站自己的程式，也只准連服務器、本機與網站自己（`connect-src 'self'`，下載錄好的背景音樂）。GitHub Pages 是靜態網站，連回自己拿不走 token。
+- `index.html` 的 CSP 只准執行網站自己的程式，也只准連服務器、本機與網站自己（`connect-src 'self'`，下載錄好的背景音樂）。`manifest-src 'self'` 是加入主畫面用的 `manifest.webmanifest`。GitHub Pages 是靜態網站，連回自己拿不走 token。
 - `?server=` 只有網頁開在本機時才有效，不然別人可以用一個連結把 token 騙走。
 
 ## 部署
@@ -210,7 +213,12 @@ token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束�
   - 手牌排滿整個寬度，但牌高最多佔畫面高度的 19%。
 - 牌桌的尺寸在 `TableCanvas`：`unit` 讓小螢幕的牌比照比例縮放時大，`discardColumns` 在短邊排不下三排棄牌時讓每排多放幾張。大視窗和 Swing 版一樣。
 - 直向放不下一排夠大的牌時，手牌分成兩排，見 `twoLineHand`。位置還是當成一長排來算，由 `RowLayout` 折到第二排。
-- 「全螢幕」按鈕切換整頁全螢幕，直向與橫向都有，再按一次或按手機的返回鍵離開。不會自己轉向，要橫向就解除旋轉鎖定再轉手機。iPhone 的 Safari 只有影片能全螢幕，所以沒有這顆按鈕。
+- 「全螢幕」按鈕切換整頁全螢幕，直向與橫向都有，再按一次或按手機的返回鍵離開。不會自己轉向，要橫向就解除旋轉鎖定再轉手機。iPad 的 Safari 16.4 以前只有 `webkit` 開頭的 Fullscreen API，`Browser` 兩種都看；要連請求的函式都在才算能全螢幕。
+- **iPhone**：iPhone 上的瀏覽器（都是 Safari 的核心）只有影片能全螢幕，到 iOS 26 都一樣。同一個位置照樣放「全螢幕」，按了用 `Dialog.message` 教怎麼「加入主畫面」（`TablePanel.HOME_SCREEN_TIP`），從主畫面的圖示打開就沒有網址列與工具列，是 iPhone 上最接近全螢幕的做法。已經是從主畫面打開的（`navigator.standalone` 或 `display-mode: standalone`）就不放這顆按鈕。
+  - 主畫面要用的：`index.html` 的 `apple-mobile-web-app-capable` 等 meta、`apple-touch-icon.png`（180 px）與 `manifest.webmanifest`（`display: standalone`，圖示 `icon-192.png`、`icon-512.png`，Android 也能安裝）。圖示照 `favicon.svg` 的牌畫成 PNG，`pom.xml` 的 PNG 不做取代；CSP 要有 `manifest-src 'self'`。
+  - 狀態列用 `black-translucent`，網頁從螢幕最上面開始畫，`viewport` 要 `viewport-fit=cover`。瀏海、動態島、圓角與底部的橫條由 `style.css` 的 `--safe-top` 等變數（`env(safe-area-inset-*)`）讓開：`#app`、`.backdrop`、`.waiting` 四周留白，`.floating` 與滑出來的側欄自己加，手機的視窗高度也扣掉。Safari 分頁裡只有橫向的左右兩邊有。
+  - 主畫面打開的和 Safari 分開存 `localStorage`，名字、設定與接回牌局的 token 都不共用，說明裡請玩家打完這一場再換過去。
+- 手機直向時提示橫跨動作列的第一行，蓋在「全螢幕」與「選單」上面，所以 `.hint` 一律 `pointer-events: none`。0.17.0 讓提示蓋在火焰上面（`z-index: 3`）之後到 0.20.1，直向的這兩顆按鈕都按不到。
 - 手機進入牌局時自動先切全螢幕（`Browser.fullscreenOnPhone`）：跟電腦打的「開始牌局」、房間裡的「開始牌局」、加入（含補位）與接回牌局。瀏覽器只准在點按的當下切，所以在這些按鈕的處理裡直接呼叫，不等牌桌出來；加入的人在房間等房主開局時沒有自己按的按鈕，所以加入時就切。開房間時不切，房主多半還要切到別的 App 傳房號。手機的條件是手指操作（`pointer: coarse`）加上手機版面，電腦開窄視窗不會切；已經是全螢幕、不支援或被拒絕就維持原樣。離開全螢幕後同一局不會再自己切回去。
 - 手指點牌是點一下抬起、再點一次才打出，滑鼠還是點一下就打出。
 - 測試時用瀏覽器開發工具的手機模式，但那不是真的手機：iOS 的 Safari、網址列伸縮與切到背景要用實機看。
