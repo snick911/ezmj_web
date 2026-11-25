@@ -1,0 +1,71 @@
+# iPhone 模擬器裡真的 Safari 截圖：GitHub 的 Mac 開 iPhone 模擬器，走過大廳、牌桌、全螢幕說明與橫向，
+# 截圖與量到的大小推到 ios-screenshots 分支（每次整個蓋掉），摘要也寫在這次執行的 Summary。見 README 的「iPhone 模擬器截圖」。
+# 用本機開的服務器，不碰線上的 Render。公開的 repo 用 GitHub 的 Mac 不用錢。
+name: iPhone screenshots
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'src/**'
+      - 'tools/ios-shots/**'
+      - '.github/workflows/ios-screenshots.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-screenshots
+  cancel-in-progress: true
+
+jobs:
+  shots:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - name: Engine commits
+        # 網頁和 pages.yml 用同一個 ezmj，服務器用它 Dockerfile 裡的
+        run: echo "WEB_ENGINE=$(sed -n 's/^  EZMJ_COMMIT: //p' .github/workflows/pages.yml)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+        with:
+          repository: snick911/ezmj
+          ref: ${{ env.WEB_ENGINE }}
+          path: ezmj-engine
+      - uses: actions/checkout@v7
+        with:
+          repository: snick911/ezmjService
+          path: ezmj-server
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Build the site
+        run: ./mvnw -q -B process-classes -Dezmj.source="$GITHUB_WORKSPACE/ezmj-engine/src"
+      - name: Build the server
+        run: |
+          SERVER_ENGINE=$(sed -n 's/^ARG EZMJ_COMMIT=//p' ezmj-server/Dockerfile)
+          git clone -q https://github.com/snick911/ezmj.git server-engine
+          git -C server-engine checkout -q "$SERVER_ENGINE"
+          mkdir -p server-classes
+          javac --release 17 -encoding UTF-8 -d server-classes \
+            $(find server-engine/src -name '*.java' -not -path '*/ezmj/ui/*' -not -path '*/ezmj/Main.java') \
+            $(find ezmj-server/src -name '*.java')
+          rsync -a --exclude '*.java' ezmj-server/src/ server-classes/
+      - name: Screenshots
+        run: bash tools/ios-shots/run.sh target/site server-classes ios-shots
+      - name: Publish to the ios-screenshots branch
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd ios-shots
+          git init -q
+          git checkout -q -b ios-screenshots
+          git add -A
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "iPhone screenshots for ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ios-screenshots

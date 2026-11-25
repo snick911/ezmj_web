@@ -4,6 +4,10 @@
 
 ## 未發布
 
+### 新增
+
+- iPhone 模擬器截圖：`.github/workflows/ios-screenshots.yml` 借 GitHub 的 Mac 開 iPhone 模擬器，用真的 Safari 走過大廳、牌桌、全螢幕說明與橫向，截圖與量到的大小推到 `ios-screenshots` 分支。只是測試用的工具，網站沒有變。見 README 的「iPhone 模擬器截圖」。
+
 ## 0.21.1 - 2026-11-25
 
 ### 修正
