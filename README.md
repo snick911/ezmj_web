@@ -65,7 +65,8 @@ iPhone 的 Safari 有些行為 Chromium 沒有（例如橫向時放大字），�
 - **什麼時候跑**：push 到 `main` 而且動到 `web/`、`src/`、`tools/ios-shots/` 或這個 workflow 時自動跑；也可以在 GitHub 的 Actions 頁籤選「iPhone screenshots」按「Run workflow」。一次大約 10 分鐘。
 - **做什麼**（`tools/ios-shots/run.sh`）：照 `pages.yml` 的 `EZMJ_COMMIT` 建網站、照 `ezmjService` 的 `Dockerfile` 建服務器，在 Mac 上開本機服務器（不碰線上的 Render），開最新 iOS 裡號碼最大的基本款 iPhone 模擬器，用 Safari 打開 `harness.html`。它是 `index.html` 的副本，多載入 `tools/ios-shots/harness.js`，不會上線。
 - **harness.js** 在 Safari 裡自己走：大廳 → 跟電腦打的牌桌 → 按「全螢幕」的加入主畫面說明 → 轉成橫向的牌桌 → 選單。每一步把畫面大小、`html` 的字、讓開瀏海與橫條的寬度（量 `env(safe-area-inset-*)`）與按鈕的位置 POST 到 `serve.py`，等 `run.sh` 截好圖再往下。
-- **轉橫向**：`simctl` 沒有這個指令，用 AppleScript 按 Simulator 的 Device 選單的 Rotate Left，不行再送 ⌘←。轉不了的話網頁等不到橫向，摘要會寫錯誤。
+- **轉橫向**：`simctl` 沒有這個指令，用 AppleScript 按 Simulator 的 Device 選單的 Rotate Left，不行再送 ⌘←。轉不了的話網頁等不到橫向，摘要會寫錯誤。GitHub 的 Mac 准 AppleScript 操作畫面。模擬器存的截圖一律是直向的，橫向的由 `sips` 轉正。
+- **Safari 的提示**：iOS 26 的 Safari 第一次打開時跳出「⋯ 選單裡有分享與書籤」的提示，蓋住網頁下半部，截大廳之前在畫面正中間點一下收掉。
 - **結果**：截圖、`reports.jsonl`、`summary.md` 與紀錄推到 `ios-screenshots` 分支，每次整個蓋掉；`summary.md` 也寫在這次執行的 Summary。在本機看：`git fetch origin ios-screenshots`，再用 `git show origin/ios-screenshots:summary.md` 或把圖檔取出來。
 - 只看得到 Safari 分頁裡的樣子；加入主畫面後打開的樣子沒辦法自動化，要用 iPhone 看。
 

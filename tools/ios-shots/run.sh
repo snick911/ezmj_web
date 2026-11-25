@@ -74,8 +74,26 @@ wait_report() {
 
 shot() {
   xcrun simctl io "$UDID" screenshot "$OUT/$1.png" > /dev/null 2>&1
+  # 模擬器存的是直向的畫面，橫向的轉正（往逆時針轉 90 度）
+  case $1 in
+    *-landscape) sips -r 270 "$OUT/$1.png" > /dev/null 2>&1 ;;
+  esac
   touch "$ACKS/$1"
   log "截圖 $1"
+}
+
+# iOS 26 的 Safari 第一次打開時跳出「⋯ 選單裡有分享與書籤」的提示，蓋住網頁下半部。
+# 在大廳正中間（空的房間列表）點一下把它收掉，點到網頁也沒關係。
+dismiss_tip() {
+  if osascript -e 'tell application "Simulator" to activate' -e 'delay 0.5' \
+      -e 'tell application "System Events" to tell process "Simulator"' \
+      -e 'set {x, y} to position of window 1' -e 'set {w, h} to size of window 1' \
+      -e 'click at {x + w / 2, y + h / 2}' -e 'end tell' >> "$OUT/run.log" 2>&1; then
+    log "點一下收掉 Safari 的提示"
+  else
+    log "收不掉 Safari 的提示，見上面 osascript 的錯誤"
+  fi
+  sleep 1.5
 }
 
 # 先按 Device 選單的 Rotate Left，不行再按 ⌘←
@@ -96,7 +114,13 @@ xcrun simctl openurl "$UDID" "http://localhost:8080/harness.html?server=ws://loc
 log "Safari 打開測試頁"
 
 for step in lobby-portrait table-portrait; do
-  if wait_report "$step" 180; then shot "$step"; else FAILED=1; break; fi
+  if wait_report "$step" 180; then
+    if [ "$step" = lobby-portrait ]; then dismiss_tip; fi
+    shot "$step"
+  else
+    FAILED=1
+    break
+  fi
 done
 if [ $FAILED -eq 0 ]; then
   # 有全螢幕按鈕時是說明視窗；沒有的話網頁報 no-fullscreen-button
