@@ -27,8 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Engine commits
-        # 網頁和 pages.yml 用同一個 ezmj，服務器用它 Dockerfile 裡的
-        run: echo "WEB_ENGINE=$(sed -n 's/^  EZMJ_COMMIT: //p' .github/workflows/pages.yml)" >> "$GITHUB_ENV"
+        # 網頁和 pages.yml 用同一個 ezmj，服務器用它 Dockerfile 裡的。寫成區塊，指令裡的「: 」才不會被當成 YAML。
+        run: |
+          echo "WEB_ENGINE=$(sed -n 's/^  EZMJ_COMMIT: //p' .github/workflows/pages.yml)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           repository: snick911/ezmj
