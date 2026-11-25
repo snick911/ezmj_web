@@ -217,6 +217,9 @@ token 等於座位的身分，存在瀏覽器的 `localStorage`，牌局結束�
 - **iPhone**：iPhone 上的瀏覽器（都是 Safari 的核心）只有影片能全螢幕，到 iOS 26 都一樣。同一個位置照樣放「全螢幕」，按了用 `Dialog.message` 教怎麼「加入主畫面」（`TablePanel.HOME_SCREEN_TIP`），從主畫面的圖示打開就沒有網址列與工具列，是 iPhone 上最接近全螢幕的做法。已經是從主畫面打開的（`navigator.standalone` 或 `display-mode: standalone`）就不放這顆按鈕。
   - 主畫面要用的：`index.html` 的 `apple-mobile-web-app-capable` 等 meta、`apple-touch-icon.png`（180 px）與 `manifest.webmanifest`（`display: standalone`，圖示 `icon-192.png`、`icon-512.png`，Android 也能安裝）。圖示照 `favicon.svg` 的牌畫成 PNG，`pom.xml` 的 PNG 不做取代；CSP 要有 `manifest-src 'self'`。
   - 狀態列用 `black-translucent`，網頁從螢幕最上面開始畫，`viewport` 要 `viewport-fit=cover`。瀏海、動態島、圓角與底部的橫條由 `style.css` 的 `--safe-top` 等變數（`env(safe-area-inset-*)`）讓開：`#app`、`.backdrop`、`.waiting` 四周留白，`.floating` 與滑出來的側欄自己加，手機的視窗高度也扣掉。Safari 分頁裡只有橫向的左右兩邊有。
+  - 讓開的地方不露出深色的邊：大廳與房間的漸層畫在 `#app` 上鋪滿整個螢幕；牌桌時 `#app` 接著畫絨布的放射漸層，中心與半徑由 `TableCanvas.syncFeltVars` 寫進 `--felt-x`、`--felt-y`、`--felt-r`，和畫布的 `paintFelt` 一樣，看起來就是同一張桌布。用 `:has()` 分辨畫面，iOS 15.4 以前不支援，照舊露出 `body` 的底色。
+  - 牌桌不讓開底部的橫條：橫向時手牌和其他手機一樣畫到最底下；直向時動作列的底色鋪到底，`padding-bottom` 與說話的按鈕自己加上 `--safe-bottom`，按鈕留在橫條上面。
+  - `-webkit-text-size-adjust: 100%` 要寫在 `html`：iPhone 橫向時會放大字，只寫在 `body` 的話 `html` 的字照樣被放大，`rem` 都跟著它，按鈕、提示與說話的按鈕全部大了約 1.5 倍，牌桌畫布上的字不受影響（0.21.0 以前）。Chromium 不會這樣放大，電腦上模擬不出來，要用 iPhone 看。
   - 主畫面打開的和 Safari 分開存 `localStorage`，名字、設定與接回牌局的 token 都不共用，說明裡請玩家打完這一場再換過去。
 - 手機直向時提示橫跨動作列的第一行，蓋在「全螢幕」與「選單」上面，所以 `.hint` 一律 `pointer-events: none`。0.17.0 讓提示蓋在火焰上面（`z-index: 3`）之後到 0.20.1，直向的這兩顆按鈕都按不到。
 - 手機進入牌局時自動先切全螢幕（`Browser.fullscreenOnPhone`）：跟電腦打的「開始牌局」、房間裡的「開始牌局」、加入（含補位）與接回牌局。瀏覽器只准在點按的當下切，所以在這些按鈕的處理裡直接呼叫，不等牌桌出來；加入的人在房間等房主開局時沒有自己按的按鈕，所以加入時就切。開房間時不切，房主多半還要切到別的 App 傳房號。手機的條件是手指操作（`pointer: coarse`）加上手機版面，電腦開窄視窗不會切；已經是全螢幕、不支援或被拒絕就維持原樣。離開全螢幕後同一局不會再自己切回去。

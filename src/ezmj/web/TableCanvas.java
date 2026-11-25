@@ -9,10 +9,12 @@ import java.util.function.Consumer;
 import org.teavm.jso.browser.Window;
 import org.teavm.jso.canvas.CanvasGradient;
 import org.teavm.jso.canvas.CanvasRenderingContext2D;
+import org.teavm.jso.dom.css.CSSStyleDeclaration;
 import org.teavm.jso.dom.events.MouseEvent;
 import org.teavm.jso.dom.html.HTMLCanvasElement;
 import org.teavm.jso.dom.html.HTMLDocument;
 import org.teavm.jso.dom.html.HTMLElement;
+import org.teavm.jso.dom.html.TextRectangle;
 
 import ezmj.engine.Round;
 import ezmj.engine.RoundEvent;
@@ -290,6 +292,8 @@ final class TableCanvas {
     private boolean compact;
     /** 棄牌比原本放大幾倍，每次對齊畫布大小時重算（牌的大小設定也會影響），見 computeDiscardScale。 */
     private double discardScale = 1;
+    /** 上次寫進 style.css 的絨布中心與半徑，見 syncFeltVars。 */
+    private String feltVars = "";
     /** 手機橫向的版面，見 WIDE_BOX_HALF。 */
     private boolean wide;
     /** 橫向時浮在牌桌上的提示與按鈕，位置用 CSS 變數告訴它。 */
@@ -670,6 +674,31 @@ final class TableCanvas {
             canvas.setHeight((int) (nextH * ratio));
         }
         discardScale = computeDiscardScale();
+        syncFeltVars();
+    }
+
+    /**
+     * iPhone 讓開瀏海與橫條的地方由 style.css 的 #app 接著畫絨布，要知道畫布上 paintFelt 的漸層中心（以整個畫面算）與半徑。
+     * 每次重畫都會經過這裡，只在變了的時候寫。
+     */
+    private void syncFeltVars() {
+        TextRectangle box = host.getBoundingClientRect();
+        String x = Math.round(box.getLeft() + width / 2.0) + "px";
+        String y = Math.round(box.getTop() + height / 2.0) + "px";
+        String r = Math.round(feltRadius()) + "px";
+        String next = x + " " + y + " " + r;
+        if (next.equals(feltVars)) {
+            return;
+        }
+        feltVars = next;
+        CSSStyleDeclaration style = HTMLDocument.current().getDocumentElement().getStyle();
+        style.setProperty("--felt-x", x);
+        style.setProperty("--felt-y", y);
+        style.setProperty("--felt-r", r);
+    }
+
+    private double feltRadius() {
+        return Math.max(1, Math.max(width, height) * .7);
     }
 
     private static double pixelRatio() {
@@ -1216,8 +1245,9 @@ final class TableCanvas {
         g.alpha(savedAlpha);
     }
 
+    /** 中間亮、四周暗的絨布。半徑改了 syncFeltVars 也會跟著改，style.css 才接得起來。 */
     private void paintFelt(Gfx g) {
-        double radius = Math.max(1, Math.max(width, height) * .7);
+        double radius = feltRadius();
         CanvasGradient gradient = context.createRadialGradient(width / 2.0, height / 2.0, 0, width / 2.0, height / 2.0, radius);
         gradient.addColorStop(0, Theme.FELT);
         gradient.addColorStop(1, Theme.FELT_DARK);

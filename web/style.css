@@ -26,11 +26,32 @@ html, body {
   margin: 0;
 }
 
+/*
+ * iPhone 橫向時會把字放大。只寫在 body 的話 html 的字還是會被放大，rem 都跟著 html，所以橫向的按鈕、提示與說話的按鈕
+ * 全部大了約 1.5 倍（0.21.0 以前）。要寫在 html 上。
+ */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 /* 手機的網址列會伸縮，dvh 才是真正看得到的高度，舊瀏覽器退回 100%。四周讓開瀏海與橫條，露出底下的 body 底色。 */
 #app {
   height: 100%;
   height: 100dvh;
   padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+/*
+ * 讓開的地方不要露出一條深色的邊：大廳與房間的漸層改畫在 #app 上，鋪滿整個螢幕；牌桌接著畫絨布的放射漸層，
+ * 中心與半徑由 TableCanvas.syncFeltVars 寫進 --felt-x、--felt-y、--felt-r，和畫布上的接得起來。
+ * 牌桌不讓開底部的橫條：橫向時手牌和其他手機一樣畫到最底下，直向時動作列的底色鋪到底，按鈕自己留在橫條上面。
+ * 不支援 :has 的舊瀏覽器（iOS 15.4 以前）照舊露出 body 的底色。
+ */
+#app:has(> .form-screen) { background: linear-gradient(var(--felt), var(--felt-dark)); }
+#app:has(> .form-screen) > .form-screen { background: none; }
+#app:has(> .table-screen) {
+  background: radial-gradient(circle var(--felt-r, 1px) at var(--felt-x, 50%) var(--felt-y, 50%), var(--felt), var(--felt-dark));
+  padding-bottom: 0;
 }
 
 body {
@@ -362,6 +383,8 @@ h1, h2, h3, p { margin: 0; }
   /* 放得下一行提示加一排吃碰槓胡，按鈕出現時牌桌不會跟著縮 */
   min-height: 6.25rem;
   padding: .5rem .5rem .6rem;
+  /* 牌桌不讓開底部的橫條（見 #app），底色鋪到底，按鈕留在橫條上面 */
+  padding-bottom: calc(.6rem + var(--safe-bottom));
   row-gap: .375rem;
 }
 .hint { color: var(--muted); font-size: .94rem; grid-column: 1 / -1; grid-row: 1; min-height: 1.3em; text-align: center; }
@@ -453,6 +476,7 @@ h1, h2, h3, p { margin: 0; }
   flex-direction: column;
   gap: .5rem;
   padding: .875rem;
+  padding-bottom: calc(.875rem + var(--safe-bottom));
   width: 16.4rem;
 }
 .sidebar .grid { font-size: .94rem; table-layout: auto; width: 100%; }
@@ -853,7 +877,12 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
   }
 
   /* 直向：動作列在牌桌下面，和電腦版一樣先留好一排吃碰槓胡的高度，按鈕出現時手牌不會往上跳 */
-  .action-bar { min-height: 7rem; padding: .3rem .4rem .4rem; position: relative; }
+  .action-bar {
+    min-height: calc(7rem + var(--safe-bottom));
+    padding: .3rem .4rem .4rem;
+    padding-bottom: calc(.4rem + var(--safe-bottom));
+    position: relative;
+  }
   .menu-button { position: absolute; right: .4rem; top: .3rem; }
   .fullscreen-button { left: .4rem; position: absolute; top: .3rem; }
   .hint { min-height: 2.7rem; padding: 0 4.6rem; }
@@ -863,7 +892,7 @@ ul { margin: .1rem 0 .3rem 1.4rem; padding: 0; }
    * 絕對定位的格線子元素有指定欄列的話，會對齊那一格而不是整個動作列，所以欄列改回 auto。
    */
   .talk-button {
-    bottom: .4rem;
+    bottom: calc(.4rem + var(--safe-bottom));
     grid-column: auto;
     grid-row: auto;
     height: 3.3rem;
